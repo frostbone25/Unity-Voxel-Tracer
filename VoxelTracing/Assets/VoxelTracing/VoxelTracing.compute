@@ -794,6 +794,7 @@ void ComputeShader_TraceSurfaceDirectLight_V1(uint3 id : SV_DispatchThreadID)
     #endif
 
     finalColor = max(0.0f, finalColor);
+    finalColor.rgb += float3(0.1f, 0.1f, 0.1f);
     finalColor *= sceneAlbedo;
     finalColor += sceneEmissive;
 
