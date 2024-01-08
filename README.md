@@ -1,6 +1,6 @@
 # Unity Voxel Tracer
 
-Work in progress voxel tracer. This at the moment is intended to be an offline solution for lighting, so real-time framerates are not a necessity. 
+Work in progress voxel tracer. This at the moment is intended to be an offline solution for lighting, so real-time framerates are not a goal at the moment. 
 
 With that said, there is still a LOT more to be improved and done...
 
@@ -9,13 +9,13 @@ With that said, there is still a LOT more to be improved and done...
 - Bounce Lighting *(1 bounce)*
 - Emissive Lighting *(1 bounce)*
 
-### TODO / Ideas:
+### TODO / Notes / Ideas:
 - Soft shadow support for Directional/Spot/Point lights.
 - Environment Lighting support.
 - Saving Volumetric Direct Lighting to the disk.
 - Volumetric Bounce Lighting support.
-- Add functionality for recursively doing multiple bounces. *(right now only 1 bounce is calculated, but more can be calculated recursively)*
-- Geometry thickening to solve problems with light leakage *(conservative rasterization perhaps)*
+- Add functionality for recursively doing multiple bounces. *(right now only 1 bounce is calculated, but more can be calculated recursively. Should be trivial to implement)*
+- Geometry thickening to solve problems with light leakage *(conservative rasterization perhaps?)*
 - Normal Oriented Hemisphere Sampling works and improves quality, but the means of obtaining scene normals should be improved as in certain cases it can cause problems with turning surfaces dark.
 - Optimization: Albedo Buffer format can be 8 bit
 - Optimizing Scene Voxelization step.
