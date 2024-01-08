@@ -15,6 +15,7 @@
         _RaymarchSteps("Raymarch Steps", Float) = 64
         [Toggle(OPAQUE_RESULT)] _RaymarchOpaque("Raymarch Opaque", Float) = 1
         _RaymarchJitterStrength("Raymarch Jitter Strength", Float) = 1
+        _Density("Non Opaque Density", Float) = 1
     }
 
     SubShader
@@ -57,6 +58,7 @@
             float _RaymarchStepSize;
             float _RaymarchSteps;
             float _RaymarchJitterStrength;
+            float _Density;
             float4 _VolumePos;
             float4 _VolumeSize;
             sampler3D _VolumeTexture;
@@ -201,7 +203,10 @@
                         #else
                             float4 sampledColor = tex3Dlod(_VolumeTexture, float4(scaledPos, _MipLevel));
 
-                            result += sampledColor * stepLength;
+                            if (result.a > 1.0f)
+                                break;
+
+                            result += sampledColor * stepLength * _Density;
                         #endif
                     }
 

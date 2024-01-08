@@ -25,16 +25,28 @@ public class VoxelizeScene : MonoBehaviour
     public string voxelName = "Voxel";
     public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f);
     public float voxelDensitySize = 1.0f;
-
-    [Header("Baking Options")]
+    public float geometryThicknessModifier = 0.0f;
     public bool enableAnitAliasing = false;
     public bool blendVoxelResult = false;
-    public int samples = 32;
-    public int bounces = 2;
+
+    [Header("Baking Options")]
+    [Range(1, 512)] public int samples = 64;
+    [Range(1, 16)] public int sampleTiles = 4;
+
+    public int bounces = 1;
+    public bool normalOrientedHemisphereSampling = false;
 
     [Header("Gizmos")]
     public bool previewBounds = true;
-    public bool previewVoxels = false;
+
+    [Header("Buffers")]
+    public Texture3D voxelAlbedoBuffer;
+    public Texture3D voxelNormalBuffer;
+    public Texture3D voxelEmissiveBuffer;
+    public Texture3D voxelDirectLightSurfaceBuffer;
+    public Texture3D voxelBounceLightSurfaceBuffer;
+    public Texture3D voxelDirectLightVolumeBuffer;
+    public Texture3D voxelBounceLightVolumeBuffer;
 
     private RenderTexture voxelCameraSlice;
     private GameObject voxelCameraGameObject;
@@ -52,10 +64,8 @@ public class VoxelizeScene : MonoBehaviour
     private ComputeShader slicer;
     private ComputeShader voxelize;
     private Shader cameraVoxelAlbedoShader;
+    private Shader cameraVoxelNormalShader;
     private Shader cameraVoxelEmissiveShader;
-
-    private Texture3D voxelAlbedoBuffer;
-    private Texture3D voxelEmissiveBuffer;
 
     private static TextureFormat textureformat = TextureFormat.RGBAHalf;
     private static RenderTextureFormat rendertextureformat = RenderTextureFormat.ARGBHalf;
@@ -65,8 +75,9 @@ public class VoxelizeScene : MonoBehaviour
         if (slicer == null) slicer = AssetDatabase.LoadAssetAtPath<ComputeShader>(localAssetFolder + "/Slicer.compute");
         if (voxelize == null) voxelize = AssetDatabase.LoadAssetAtPath<ComputeShader>(localAssetFolder + "/VoxelTracing.compute");
 
-        if (cameraVoxelAlbedoShader == null) cameraVoxelAlbedoShader = Shader.Find("Hidden/VoxelBufferAlbedo");
-        if (cameraVoxelEmissiveShader == null) cameraVoxelEmissiveShader = Shader.Find("Hidden/VoxelBufferEmissive");
+        cameraVoxelAlbedoShader = Shader.Find("Hidden/VoxelBufferAlbedo");
+        cameraVoxelNormalShader = Shader.Find("Hidden/VoxelBufferNormal");
+        cameraVoxelEmissiveShader = Shader.Find("Hidden/VoxelBufferEmissive");
     }
 
     private void GetVoxelBuffers()
@@ -75,9 +86,11 @@ public class VoxelizeScene : MonoBehaviour
         string sceneName = activeScene.name;
         string sceneDataFolder = localAssetDataFolder + "/" + sceneName;
         string voxelAlbedoBufferAssetPath = sceneDataFolder + "/" + string.Format("{0}_albedo.asset", voxelName);
+        string voxelNormalBufferAssetPath = sceneDataFolder + "/" + string.Format("{0}_normal.asset", voxelName);
         string voxelEmissiveBufferAssetPath = sceneDataFolder + "/" + string.Format("{0}_emissive.asset", voxelName);
 
         voxelAlbedoBuffer = AssetDatabase.LoadAssetAtPath<Texture3D>(voxelAlbedoBufferAssetPath);
+        voxelNormalBuffer = AssetDatabase.LoadAssetAtPath<Texture3D>(voxelNormalBufferAssetPath);
         voxelEmissiveBuffer = AssetDatabase.LoadAssetAtPath<Texture3D>(voxelEmissiveBufferAssetPath);
     }
 
@@ -143,6 +156,92 @@ public class VoxelizeScene : MonoBehaviour
             computeShader.DisableKeyword(keyword);
     }
 
+    public Texture3D ThickenVolume(Texture3D result)
+    {
+        for (int x = 0; x < result.width; x++)
+        {
+            for (int y = 0; y < result.height; y++)
+            {
+                for (int z = 0; z < result.depth; z++)
+                {
+                    Color colorOfCurrentPixel = result.GetPixel(x, y, z);
+
+                    bool thicken = false;
+
+                    Color colorOfUpPixel = colorOfCurrentPixel;
+                    Color colorOfDownPixel = colorOfCurrentPixel;
+                    Color colorOfRightPixel = colorOfCurrentPixel;
+                    Color colorOfLeftPixel = colorOfCurrentPixel;
+                    Color colorOfForwardPixel = colorOfCurrentPixel;
+                    Color colorOfBackPixel = colorOfCurrentPixel;
+
+                    bool ignoreUp = y + 1 > result.height;
+                    bool ignoreDown = y - 1 < 0;
+
+                    bool ignoreRight = x + 1 <= result.width;
+                    bool ignoreLeft = x + 1 <= 0;
+
+                    bool ignoreForward = z + 1 <= result.depth;
+                    bool ignoreBack = z + 1 <= 0;
+
+                    //if (y + 1 <= result.height)
+                    if (!ignoreUp)
+                        colorOfUpPixel = result.GetPixel(x, y + 1, z);
+
+                    //if (y - 0 >= 0)
+                    if (!ignoreDown)
+                        colorOfDownPixel = result.GetPixel(x, y - 1, z);
+
+                    //if (x + 1 <= result.width)
+                    if (!ignoreRight)
+                        colorOfRightPixel = result.GetPixel(x + 1, y, z);
+
+                    //if (x - 0 >= 0)
+                    if (!ignoreLeft)
+                        colorOfLeftPixel = result.GetPixel(x - 1, y, z);
+
+                    //if (z + 1 <= result.depth)
+                    if (!ignoreForward)
+                        colorOfForwardPixel = result.GetPixel(x, y, z + 1);
+
+                    //if (z - 1 <= 0)
+                    if (!ignoreBack)
+                        colorOfBackPixel = result.GetPixel(x, y, z - 1);
+
+                    //Now check if this voxel is atleast neighboring 1 other voxel
+                    bool isUpOpaque = colorOfUpPixel.a > 0.0f;
+                    bool isDownOpaque = colorOfDownPixel.a > 0.0f;
+                    bool isRightOpaque = colorOfRightPixel.a > 0.0f;
+                    bool isLeftOpaque = colorOfLeftPixel.a > 0.0f;
+                    bool isForwardOpaque = colorOfForwardPixel.a > 0.0f;
+                    bool isBackOpaque = colorOfBackPixel.a > 0.0f;
+
+                    //if the current voxel is opaque
+                    if(colorOfCurrentPixel.a > 0.0f)
+                    {
+                        if(!isUpOpaque && !isDownOpaque && !isRightOpaque && !isLeftOpaque && !isForwardOpaque && !isBackOpaque)
+                        {
+                            result.SetPixel(x, y, z, colorOfCurrentPixel);
+                            result.SetPixel(x, y, z, colorOfCurrentPixel);
+
+                            result.SetPixel(x, y, z, colorOfCurrentPixel);
+                            result.SetPixel(x, y, z, colorOfCurrentPixel);
+
+                            result.SetPixel(x, y, z, colorOfCurrentPixel);
+                            result.SetPixel(x, y, z, colorOfCurrentPixel);
+                        }
+                    }    
+
+                    //result.SetPixel(x, y, z, colorResult);
+                }
+            }
+        }
+
+        result.Apply();
+
+        return result;
+    }
+
     //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
@@ -183,10 +282,11 @@ public class VoxelizeScene : MonoBehaviour
     //|||||||||||||||||||||||||||||||||||||||||| STEP 1: CAPTURE ALBEDO/EMISSIVE VOXEL BUFFERS ||||||||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||||||||| STEP 1: CAPTURE ALBEDO/EMISSIVE VOXEL BUFFERS ||||||||||||||||||||||||||||||||||||||||||
 
-    [ContextMenu("Step 1: Generate Albedo And Emissive Buffers")]
+    [ContextMenu("Step 1: Generate Albedo | Normal | Emissive Buffers")]
     public void GenerateVolumes()
     {
         GenerateVolume(cameraVoxelAlbedoShader, string.Format("{0}_albedo", voxelName), rendertextureformat, textureformat);
+        GenerateVolume(cameraVoxelNormalShader, string.Format("{0}_normal", voxelName), rendertextureformat, textureformat);
         GenerateVolume(cameraVoxelEmissiveShader, string.Format("{0}_emissive", voxelName), rendertextureformat, textureformat);
     }
 
@@ -208,6 +308,8 @@ public class VoxelizeScene : MonoBehaviour
 
         voxelCamera.SetReplacementShader(replacementShader, renderTypeKey);
         voxelCamera.allowMSAA = enableAnitAliasing;
+
+        Shader.SetGlobalFloat("_VertexExtrusion", Mathf.Max(zOffset, Mathf.Max(xOffset, yOffset)) * geometryThicknessModifier);
 
         //||||||||||||||||||||||||||||||||| X |||||||||||||||||||||||||||||||||
         //||||||||||||||||||||||||||||||||| X |||||||||||||||||||||||||||||||||
@@ -400,15 +502,15 @@ public class VoxelizeScene : MonoBehaviour
         voxelCameraSlice.Release();
     }
 
-    //|||||||||||||||||||||||||||||||||||||||||| STEP 2: TRACE SCENE ||||||||||||||||||||||||||||||||||||||||||
-    //|||||||||||||||||||||||||||||||||||||||||| STEP 2: TRACE SCENE ||||||||||||||||||||||||||||||||||||||||||
-    //|||||||||||||||||||||||||||||||||||||||||| STEP 2: TRACE SCENE ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 2: TRACE DIRECT LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 2: TRACE DIRECT LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 2: TRACE DIRECT LIGHTING ||||||||||||||||||||||||||||||||||||||||||
 
-    [ContextMenu("Step 2: Trace Scene")]
-    public void TraceScene()
+    [ContextMenu("Step 2: Trace Direct Lighting")]
+    public void TraceDirectLighting()
     {
         GetResources();
-        GetVoxelBuffers();
+        //GetVoxelBuffers();
 
         //|||||||||||||||||||||||||||||||||||||||||| GET SCENE LIGHTS ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| GET SCENE LIGHTS ||||||||||||||||||||||||||||||||||||||||||
@@ -483,7 +585,6 @@ public class VoxelizeScene : MonoBehaviour
         //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
 
-        //int compute_main = voxelize.FindKernel("ComputeShader_TraceVolumeDirectLight_V1");
         int compute_main = voxelize.FindKernel("ComputeShader_TraceSurfaceDirectLight_V1");
 
         voxelize.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
@@ -505,6 +606,7 @@ public class VoxelizeScene : MonoBehaviour
         volumeWrite.Create();
 
         voxelize.SetTexture(compute_main, "SceneAlbedo", voxelAlbedoBuffer);
+        voxelize.SetTexture(compute_main, "SceneNormal", voxelNormalBuffer);
         voxelize.SetTexture(compute_main, "SceneEmissive", voxelEmissiveBuffer);
         voxelize.SetTexture(compute_main, "Write", volumeWrite);
 
@@ -512,7 +614,6 @@ public class VoxelizeScene : MonoBehaviour
         voxelize.SetVector("VolumeSize", voxelSize);
 
         voxelize.SetInt("Samples", samples);
-        voxelize.SetInt("Bounces", bounces);
 
         voxelize.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
 
@@ -522,10 +623,18 @@ public class VoxelizeScene : MonoBehaviour
         UnityEngine.SceneManagement.Scene activeScene = EditorSceneManager.GetActiveScene();
         string sceneName = activeScene.name;
         string sceneVolumetricsFolder = localAssetDataFolder + "/" + sceneName;
-        string voxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_result.asset", voxelName);
+        string voxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_directLightSurface.asset", voxelName);
 
         RenderTextureConverter renderTextureConverter = new RenderTextureConverter(slicer, rendertextureformat, textureformat);
-        renderTextureConverter.Save3D(volumeWrite, voxelAssetPath, new RenderTextureConverter.TextureObjectSettings() { anisoLevel = 0, filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat });
+        RenderTextureConverter.TextureObjectSettings textureObjectSettings = new RenderTextureConverter.TextureObjectSettings()
+        {
+            anisoLevel = 0,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat,
+            mipMaps = true,
+        };
+
+        renderTextureConverter.Save3D(volumeWrite, voxelAssetPath, textureObjectSettings);
 
         volumeWrite.Release();
 
@@ -533,6 +642,220 @@ public class VoxelizeScene : MonoBehaviour
         if (pointLightsBuffer != null) pointLightsBuffer.Release();
         if (spotLightsBuffer != null) spotLightsBuffer.Release();
         if (areaLightsBuffer != null) areaLightsBuffer.Release();
+    }
+
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 3: TRACE BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 3: TRACE BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 3: TRACE BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+
+    [ContextMenu("Step 3: Trace Bounce Lighting")]
+    public void TraceBounceLighting()
+    {
+        GetResources();
+        //GetVoxelBuffers();
+
+        /*
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+
+        int compute_main = voxelize.FindKernel("ComputeShader_TraceSurfaceBounceLight_V1");
+
+        voxelize.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+
+        SetComputeKeyword(voxelize, "NORMAL_ORIENTED_HEMISPHERE_SAMPLING", normalOrientedHemisphereSampling);
+
+        RenderTexture volumeWrite = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
+        volumeWrite.dimension = TextureDimension.Tex3D;
+        volumeWrite.volumeDepth = voxelResolution.z;
+        volumeWrite.enableRandomWrite = true;
+        volumeWrite.Create();
+
+        voxelize.SetTexture(compute_main, "SceneAlbedo", voxelAlbedoBuffer);
+        voxelize.SetTexture(compute_main, "SceneNormal", voxelNormalBuffer);
+        voxelize.SetTexture(compute_main, "DirectLightSurface", voxelDirectLightSurfaceBuffer);
+        voxelize.SetTexture(compute_main, "Write", volumeWrite);
+
+        voxelize.SetVector("VolumePosition", transform.position);
+        voxelize.SetVector("VolumeSize", voxelSize);
+
+        voxelize.SetInt("Samples", samples);
+
+        voxelize.SetFloat("_Seed", Random.value * 1000.0f);
+
+        voxelize.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        UnityEngine.SceneManagement.Scene activeScene = EditorSceneManager.GetActiveScene();
+        string sceneName = activeScene.name;
+        string sceneVolumetricsFolder = localAssetDataFolder + "/" + sceneName;
+        string voxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounce_{1}_tile_{}.asset", voxelName);
+
+        RenderTextureConverter renderTextureConverter = new RenderTextureConverter(slicer, rendertextureformat, textureformat);
+        RenderTextureConverter.TextureObjectSettings textureObjectSettings = new RenderTextureConverter.TextureObjectSettings()
+        {
+            anisoLevel = 0,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat,
+            mipMaps = true,
+        };
+
+        renderTextureConverter.Save3D(volumeWrite, voxelAssetPath, textureObjectSettings);
+
+        volumeWrite.Release();
+        */
+
+
+
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+
+        int calculatedSampleCount = samples / sampleTiles;
+
+        RenderTextureConverter renderTextureConverter = new RenderTextureConverter(slicer, rendertextureformat, textureformat);
+        RenderTextureConverter.TextureObjectSettings textureObjectSettings = new RenderTextureConverter.TextureObjectSettings()
+        {
+            anisoLevel = 0,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat,
+            mipMaps = true,
+        };
+
+        RenderTexture volumeWrite = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
+        volumeWrite.dimension = TextureDimension.Tex3D;
+        volumeWrite.volumeDepth = voxelResolution.z;
+        volumeWrite.enableRandomWrite = true;
+        volumeWrite.Create();
+
+        UnityEngine.SceneManagement.Scene activeScene = EditorSceneManager.GetActiveScene();
+        string sceneName = activeScene.name;
+        string sceneVolumetricsFolder = localAssetDataFolder + "/" + sceneName;
+
+        int kernelTraceSurfaceBounceLightV1 = voxelize.FindKernel("ComputeShader_TraceSurfaceBounceLight_V1");
+        int kernelAverageBuffers = voxelize.FindKernel("ComputeShader_AverageBuffers");
+
+        for (int tileIndex = 0; tileIndex < sampleTiles; tileIndex++)
+        {
+            voxelize.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+
+            SetComputeKeyword(voxelize, "NORMAL_ORIENTED_HEMISPHERE_SAMPLING", normalOrientedHemisphereSampling);
+
+            voxelize.SetTexture(kernelTraceSurfaceBounceLightV1, "SceneAlbedo", voxelAlbedoBuffer);
+            voxelize.SetTexture(kernelTraceSurfaceBounceLightV1, "SceneNormal", voxelNormalBuffer);
+            voxelize.SetTexture(kernelTraceSurfaceBounceLightV1, "DirectLightSurface", voxelDirectLightSurfaceBuffer);
+            voxelize.SetTexture(kernelTraceSurfaceBounceLightV1, "Write", volumeWrite);
+
+            voxelize.SetVector("VolumePosition", transform.position);
+            voxelize.SetVector("VolumeSize", voxelSize);
+
+            voxelize.SetInt("Samples", calculatedSampleCount);
+
+            voxelize.SetFloat("_Seed", Random.value * 1000.0f);
+
+            voxelize.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+
+            string newVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounce_{1}_tile_{2}.asset", voxelName, 1, tileIndex);
+
+            AssetDatabase.DeleteAsset(newVoxelAssetPath);
+
+            renderTextureConverter.Save3D(volumeWrite, newVoxelAssetPath, textureObjectSettings);
+        }
+
+        volumeWrite.Release();
+
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        Texture3D combinedProxy = null;
+
+        volumeWrite = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
+        volumeWrite.dimension = TextureDimension.Tex3D;
+        volumeWrite.volumeDepth = voxelResolution.z;
+        volumeWrite.enableRandomWrite = true;
+        volumeWrite.Create();
+
+        for (int tileIndex = 0; tileIndex < sampleTiles; tileIndex++)
+        {
+            string savedVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounce_{1}_tile_{2}.asset", voxelName, 1, tileIndex);
+
+            Texture3D savedVoxelAsset = AssetDatabase.LoadAssetAtPath<Texture3D>(savedVoxelAssetPath);
+
+            if (combinedProxy == null)
+                combinedProxy = savedVoxelAsset;
+
+            voxelize.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+
+            voxelize.SetTexture(kernelAverageBuffers, "AverageBufferA", savedVoxelAsset);
+            voxelize.SetTexture(kernelAverageBuffers, "AverageBufferB", combinedProxy);
+            voxelize.SetTexture(kernelAverageBuffers, "Write", volumeWrite);
+
+            voxelize.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+        }
+
+        string combinedVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounce_{1}.asset", voxelName, 1);
+        AssetDatabase.DeleteAsset(combinedVoxelAssetPath);
+
+        renderTextureConverter.Save3D(volumeWrite, combinedVoxelAssetPath, textureObjectSettings);
+
+        volumeWrite.Release();
+    }
+
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 4: COMBINE DIRECT AND BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 4: COMBINE DIRECT AND BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||||||||| STEP 4: COMBINE DIRECT AND BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
+
+    [ContextMenu("Step 4: Combine Direct and Bounce Light")]
+    public void CombineLighting()
+    {
+        GetResources();
+        //GetVoxelBuffers();
+
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
+
+        int compute_main = voxelize.FindKernel("ComputeShader_AddBuffers");
+
+        voxelize.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+
+        RenderTexture volumeWrite = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
+        volumeWrite.dimension = TextureDimension.Tex3D;
+        volumeWrite.volumeDepth = voxelResolution.z;
+        volumeWrite.enableRandomWrite = true;
+        volumeWrite.Create();
+
+        voxelize.SetTexture(compute_main, "AddBufferA", voxelDirectLightSurfaceBuffer);
+        voxelize.SetTexture(compute_main, "AddBufferB", voxelBounceLightSurfaceBuffer);
+        voxelize.SetTexture(compute_main, "Write", volumeWrite);
+
+        voxelize.SetVector("VolumePosition", transform.position);
+        voxelize.SetVector("VolumeSize", voxelSize);
+
+        voxelize.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+        UnityEngine.SceneManagement.Scene activeScene = EditorSceneManager.GetActiveScene();
+        string sceneName = activeScene.name;
+        string sceneVolumetricsFolder = localAssetDataFolder + "/" + sceneName;
+        string voxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_combined.asset", voxelName);
+
+        RenderTextureConverter renderTextureConverter = new RenderTextureConverter(slicer, rendertextureformat, textureformat);
+        RenderTextureConverter.TextureObjectSettings textureObjectSettings = new RenderTextureConverter.TextureObjectSettings()
+        {
+            anisoLevel = 0,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat,
+            mipMaps = true,
+        };
+
+        renderTextureConverter.Save3D(volumeWrite, voxelAssetPath, textureObjectSettings);
+
+        volumeWrite.Release();
     }
 
     //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| GIZMOS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
@@ -546,33 +869,8 @@ public class VoxelizeScene : MonoBehaviour
         Gizmos.color = Color.white;
 
         if (previewBounds)
-            Gizmos.DrawWireCube(transform.position, voxelSize);
-
-        if (previewVoxels)
         {
-            //3d loop for our volume
-            for (int x = -voxelResolution.x / 2; x <= voxelResolution.x / 2; x++)
-            {
-                //get the x offset
-                float x_offset = voxelSize.x / voxelResolution.x;
-
-                for (int y = -voxelResolution.y / 2; y <= voxelResolution.y / 2; y++)
-                {
-                    //get the y offset
-                    float y_offset = voxelSize.y / voxelResolution.y;
-
-                    for (int z = -voxelResolution.z / 2; z <= voxelResolution.z / 2; z++)
-                    {
-                        //get the z offset
-                        float z_offset = voxelSize.z / voxelResolution.z;
-
-                        Vector3 probePosition = new Vector3(transform.position.x + (x * x_offset), transform.position.y + (y * y_offset), transform.position.z + (z * z_offset));
-                        Vector3 voxelWorldSize = new Vector3(x_offset, y_offset, z_offset);
-
-                        Gizmos.DrawWireCube(probePosition, voxelWorldSize);
-                    }
-                }
-            }
+            Gizmos.DrawWireCube(transform.position, voxelSize);
         }
     }
 

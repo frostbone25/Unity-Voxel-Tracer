@@ -5,13 +5,19 @@ Shader "Hidden/VoxelBufferAlbedo"
         _Color("Color", Color) = (1,1,1,1)
         _MainTex("Texture", 2D) = "white" {}
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
+        _VertexExtrusion("Vertex Extrusion", Float) = 0
     }
         SubShader
         {
-            Tags { "RenderType" = "Opaque" }
-            Cull Back
-            ZTest Always
-            ZWrite On
+            Tags
+            {
+                "RenderType" = "Opaque"
+            }
+
+            //Cull Back
+            Cull Off
+            //ZTest Always
+            //ZWrite On
 
             Pass
             {
@@ -24,6 +30,7 @@ Shader "Hidden/VoxelBufferAlbedo"
                 struct appdata
                 {
                     float4 vertex : POSITION;
+                    float3 normal : NORMAL;
                     float2 uv : TEXCOORD0;
                 };
 
@@ -37,12 +44,18 @@ Shader "Hidden/VoxelBufferAlbedo"
                 float4 _MainTex_ST;
                 float4 _Color;
                 float _Cutoff;
+                float _VertexExtrusion;
 
                 v2f vert(appdata v)
                 {
                     v2f o;
 
-                    o.vertex = UnityObjectToClipPos(v.vertex);
+                    //o.vertex = UnityObjectToClipPos(v.vertex + v.normal * _VertexExtrusion);
+
+                    float4 vertexExtrusionValue = mul(unity_ObjectToWorld, float4(_VertexExtrusion, _VertexExtrusion, _VertexExtrusion, 0));
+
+                    o.vertex = UnityObjectToClipPos(v.vertex + v.normal * length(vertexExtrusionValue));
+
                     o.uv = TRANSFORM_TEX(v.uv, _MainTex);
 
                     return o;

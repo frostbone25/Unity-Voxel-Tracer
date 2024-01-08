@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System;
+using UnityEngine.Experimental.Rendering;
 
 namespace BakedVolumetrics
 {
@@ -16,6 +17,7 @@ namespace BakedVolumetrics
             public TextureWrapMode wrapMode;
             public FilterMode filterMode;
             public int anisoLevel;
+            public bool mipMaps;
         }
 
         private ComputeShader computeShader;
@@ -68,26 +70,6 @@ namespace BakedVolumetrics
         /// </summary>
         /// <param name="rt"></param>
         /// <returns></returns>
-        private Texture2D ConvertFromRenderTexture2D(RenderTexture rt)
-        {
-            //create our texture2D object to store the slice
-            Texture2D output = new Texture2D(rt.width, rt.height, assetFormat, false);
-
-            //make sure the render texture slice is active so we can read from it
-            RenderTexture.active = rt;
-
-            //read the texture and store the data in the texture2D object
-            output.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
-            output.Apply();
-
-            return output;
-        }
-
-        /// <summary>
-        /// Converts a 2D render texture to a Texture2D object.
-        /// </summary>
-        /// <param name="rt"></param>
-        /// <returns></returns>
         public static Texture2D ConvertFromRenderTexture2D(RenderTexture rt, TextureFormat assetFormat, bool mipChain = false)
         {
             //create our texture2D object to store the slice
@@ -103,7 +85,7 @@ namespace BakedVolumetrics
             return output;
         }
 
-        private Texture3D ConvertFromRenderTexture3D(RenderTexture rt)
+        public Texture3D ConvertFromRenderTexture3D(RenderTexture rt, bool mipChain = false)
         {
             RenderTexture[] layers = new RenderTexture[rt.volumeDepth]; //create an array that matches in length the "depth" of the volume
             Texture2D[] finalSlices = new Texture2D[rt.volumeDepth]; //create another array to store the texture2D versions of the layers array
@@ -115,10 +97,10 @@ namespace BakedVolumetrics
 
             for (int i = 0; i < rt.volumeDepth; i++)
             {
-                finalSlices[i] = ConvertFromRenderTexture2D(layers[i]);
+                finalSlices[i] = ConvertFromRenderTexture2D(layers[i], assetFormat);
             }
 
-            Texture3D output = new Texture3D(rt.width, rt.height, rt.volumeDepth, assetFormat, false);
+            Texture3D output = new Texture3D(rt.width, rt.height, rt.volumeDepth, assetFormat, mipChain);
             Color[] outputColors = new Color[rt.width * rt.height * rt.volumeDepth];
 
             for (int z = 0; z < rt.volumeDepth; z++)
@@ -143,7 +125,7 @@ namespace BakedVolumetrics
         /// <param name="directory">Realtive to the Assets/, make sure there is a / after. Like 'Textures/'</param>
         public void Save3D(RenderTexture rt, string assetRealtivePath, TextureObjectSettings settings)
         {
-            Texture3D output = ConvertFromRenderTexture3D(rt);
+            Texture3D output = ConvertFromRenderTexture3D(rt, settings.mipMaps);
             output.anisoLevel = settings.anisoLevel;
             output.wrapMode = settings.wrapMode;
             output.filterMode = settings.filterMode;

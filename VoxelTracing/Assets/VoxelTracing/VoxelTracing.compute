@@ -5,10 +5,11 @@
 #define UNITY_PI            3.14159265359f
 #define UNITY_TWO_PI        6.28318530718f
 
-//This acts like a bias for the surface tracing function, 1 gives best results.
+//This acts like a bias for the surface tracing functions, 1 gives best results.
 //Though this can cause issues with thin geometry (i.e. things that are only represented as a single voxel and no neighboring ones)
 //TODO: With voxelization, introduce an adjustable thickness modifier when generating them for the scene.
-#define SURFACE_OCCLUSION_SKIP_ITERATION 1
+#define SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION 1
+#define SURFACE_BOUNCE_OCCLUSION_SKIP_ITERATION 1
 
 //|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
@@ -18,6 +19,7 @@
 #pragma multi_compile_local _ POINT_LIGHTS
 #pragma multi_compile_local _ SPOT_LIGHTS
 #pragma multi_compile_local _ AREA_LIGHTS
+#pragma multi_compile_local _ NORMAL_ORIENTED_HEMISPHERE_SAMPLING
 
 //|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
@@ -54,7 +56,7 @@ struct LightSpot
 };
 #endif
 
-#if defined (SPOT_LIGHTS)
+#if defined (AREA_LIGHTS)
 struct LightArea
 {
     float3 lightPosition;
@@ -75,8 +77,21 @@ struct LightArea
 SamplerState _PointClamp;
 SamplerState _LinearClamp;
 
+Texture3D<float4> BounceLightSurface;
+Texture3D<float4> BounceLightVolume;
+Texture3D<float4> DirectLightSurface;
+Texture3D<float4> DirectLightVolume;
+
+Texture3D<float4> AddBufferA;
+Texture3D<float4> AddBufferB;
+
+Texture3D<float4> AverageBufferA;
+Texture3D<float4> AverageBufferB;
+
 Texture3D<float4> SceneAlbedo;
+Texture3D<float4> SceneNormal;
 Texture3D<float4> SceneEmissive;
+
 RWTexture3D<float4> Write;
 
 float3 VolumePosition;
@@ -84,7 +99,6 @@ float3 VolumeSize;
 float3 VolumeResolution;
 
 int Samples;
-int Bounces;
 
 float _Seed;
 
@@ -100,7 +114,7 @@ RWStructuredBuffer<LightPoint> PointLights;
 RWStructuredBuffer<LightSpot> SpotLights;
 #endif
 
-#if defined (SPOT_LIGHTS)
+#if defined (AREA_LIGHTS)
 RWStructuredBuffer<LightArea> AreaLights;
 #endif
 
@@ -205,6 +219,12 @@ float GenerateRandomFloat(float2 screenUV)
     _Seed += 1.0;
     //return GenerateHashedRandomFloat(uint3(screenUV * _ScreenParams.xy, _Seed));
     return GenerateHashedRandomFloat(uint3(screenUV, _Seed));
+}
+
+float GenerateRandomFloat(float3 vec3)
+{
+    _Seed += 1.0;
+    return GenerateHashedRandomFloat(uint4(vec3, _Seed));
 }
 
 //||||||||||||||||||||||||||||| CLASSIC RANDOM FUNCTIONS |||||||||||||||||||||||||||||
@@ -625,10 +645,6 @@ void ComputeShader_TraceSurfaceDirectLight_V1(uint3 id : SV_DispatchThreadID)
             float3 directionalLight_currentRayDirection = -directionalLight.lightDirection;
             float3 directionalLight_maxPosition = directionalLight_currentRayPosition + directionalLight.lightDirection * length(VolumeSize);
 
-            directionalLight_maxPosition.x = clamp(directionalLight_maxPosition, VolumeSize.x - VolumePosition, VolumeSize.x + VolumePosition);
-            directionalLight_maxPosition.y = clamp(directionalLight_maxPosition, VolumeSize.y - VolumePosition, VolumeSize.y + VolumePosition);
-            directionalLight_maxPosition.z = clamp(directionalLight_maxPosition, VolumeSize.z - VolumePosition, VolumeSize.z + VolumePosition);
-
             float3 directionalLightColorSample = directionalLight.lightColor * directionalLight.lightIntensity;
 
             //------------------------------ DIRECT LIGHT ------------------------------
@@ -645,11 +661,9 @@ void ComputeShader_TraceSurfaceDirectLight_V1(uint3 id : SV_DispatchThreadID)
                     break;
 
                 //keep stepping the ray in world space
-                //directionalLight_currentRayPosition += directionalLight_currentRayDirection / length(VolumeResolution);
-                //directionalLight_currentRayPosition += directionalLight_currentRayDirection / VolumeResolution;
                 directionalLight_currentRayPosition += directionalLight_currentRayDirection * singleVoxelSize;
 
-                if (iterationIndex >= SURFACE_OCCLUSION_SKIP_ITERATION)
+                if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
                 {
                     float3 directionalLight_scaledRayPosition = ((directionalLight_currentRayPosition + (VolumeSize / 2.0)) - VolumePosition) / VolumeSize;
                     float4 directionalLight_sceneAlbedoSample = TEX3D_SHARP(SceneAlbedo, directionalLight_scaledRayPosition);
@@ -716,7 +730,7 @@ void ComputeShader_TraceSurfaceDirectLight_V1(uint3 id : SV_DispatchThreadID)
                 //spotLight_currentRayPosition += spotLight_currentRayDirection / length(VolumeResolution);
                 spotLight_currentRayPosition += spotLight_currentRayDirection * singleVoxelSize;
 
-                if (iterationIndex >= SURFACE_OCCLUSION_SKIP_ITERATION)
+                if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
                 {
                     float3 spotLight_scaledRayPosition = ((spotLight_currentRayPosition + (VolumeSize / 2.0)) - VolumePosition) / VolumeSize;
                     float4 spotLight_sceneAlbedoSample = TEX3D_SHARP(SceneAlbedo, spotLight_scaledRayPosition);
@@ -770,7 +784,7 @@ void ComputeShader_TraceSurfaceDirectLight_V1(uint3 id : SV_DispatchThreadID)
                 //pointLight_currentRayPosition += pointLight_currentRayDirection / length(VolumeResolution);
                 pointLight_currentRayPosition += pointLight_currentRayDirection * singleVoxelSize;
 
-                if (iterationIndex >= SURFACE_OCCLUSION_SKIP_ITERATION)
+                if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
                 {
                     float3 pointLight_scaledRayPosition = ((pointLight_currentRayPosition + (VolumeSize / 2.0)) - VolumePosition) / VolumeSize;
                     float pointLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, pointLight_scaledRayPosition).a;
@@ -787,16 +801,218 @@ void ComputeShader_TraceSurfaceDirectLight_V1(uint3 id : SV_DispatchThreadID)
 
             if (pointLight_isOccluded == false)
             {
-                //finalColor.rgb += pointLightColorSample * pointLightDistanceSample;
-                finalColor.rgb += pointLightColorSample * pointLightDistanceSample * pointLightRange;
+                finalColor.rgb += pointLightColorSample * pointLightDistanceSample;
+                //finalColor.rgb += pointLightColorSample * pointLightDistanceSample * pointLightRange;
             }
         }
     #endif
 
+    //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
+    #if defined (AREA_LIGHTS)
+        for (int z = 0; z < AreaLights.Length; z++)
+        {
+            LightArea areaLight = AreaLights[z];
+            float2 areaLightSize = areaLight.lightSize;
+            float3 areaLightForward = areaLight.lightForwardDirection;
+            float3 areaLightRight = areaLight.lightRightDirection;
+            float3 areaLightUp = areaLight.lightUpwardDirection;
+
+            int areaWidthSamples = areaLightSize.x / min(min(singleVoxelSize.x, singleVoxelSize.y), singleVoxelSize.z);
+            int areaHeightSamples = areaLightSize.y / min(min(singleVoxelSize.x, singleVoxelSize.y), singleVoxelSize.z);
+
+            float3 accumulatedAreaLightColor = float3(0, 0, 0);
+
+            for (int x = 0; x < areaWidthSamples; x++)
+            {
+                for (int y = 0; y < areaHeightSamples; y++)
+                {
+                    float3 areaLightSamplePosition = areaLight.lightPosition;
+                    areaLightSamplePosition += ((areaLightRight * (x - (areaWidthSamples / 2)))) * singleVoxelSize;
+                    areaLightSamplePosition += ((areaLightUp * (y - (areaHeightSamples / 2)))) * singleVoxelSize;
+
+                    float distanceToAreaLight = distance(worldVoxelPosition, areaLightSamplePosition);
+                    float areaLightDistanceSample = CalculateAttenuation(distanceToAreaLight);
+                    float3 areaLightWorldDirection = normalize(worldVoxelPosition - areaLightSamplePosition);
+
+                    float3 areaLight_currentRayPosition = worldVoxelPosition;
+                    float3 areaLight_currentRayDirection = -areaLightWorldDirection;
+                    float3 areaLightColorSample = areaLight.lightColor * areaLight.lightIntensity;
+
+                    //------------------------------ DIRECT LIGHT ------------------------------
+                    //------------------------------ DIRECT LIGHT ------------------------------
+                    //------------------------------ DIRECT LIGHT ------------------------------
+
+                    float areaLightDotProduct = dot(areaLightWorldDirection, areaLightForward);
+
+                    if (areaLightDotProduct > 0.0)
+                    {
+                        bool areaLight_isOccluded = false;
+
+                        iterationIndex = 0;
+
+                        while (distance(areaLight_currentRayPosition, areaLightSamplePosition) > 0.5f)
+                        {
+                            if (PositionInVolumeBounds(areaLight_currentRayPosition.xyz) == false)
+                                break;
+
+                            //keep stepping the ray in world space
+                            areaLight_currentRayPosition += areaLight_currentRayDirection * singleVoxelSize;
+
+                            if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
+                            {
+                                float3 areaLight_scaledRayPosition = ((areaLight_currentRayPosition + (VolumeSize / 2.0)) - VolumePosition) / VolumeSize;
+                                float areaLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, areaLight_scaledRayPosition).a;
+
+                                if (areaLight_sceneOcclusionSample > 0.0)
+                                {
+                                    areaLight_isOccluded = true;
+                                    break;
+                                }
+                            }
+
+                            iterationIndex++;
+                        }
+
+                        if (areaLight_isOccluded == false)
+                        {
+                            //accumulatedAreaLightColor += areaLightColorSample * areaLightDistanceSample;
+                            accumulatedAreaLightColor += areaLightColorSample * areaLightDistanceSample * areaLightDotProduct;
+                        }
+                    }
+                }
+            }
+
+            accumulatedAreaLightColor /= areaWidthSamples;
+            accumulatedAreaLightColor /= areaHeightSamples;
+
+            finalColor.rgb += accumulatedAreaLightColor;
+        }
+    #endif
+
     finalColor = max(0.0f, finalColor);
-    finalColor.rgb += float3(0.1f, 0.1f, 0.1f);
     finalColor *= sceneAlbedo;
     finalColor += sceneEmissive;
 
     Write[id.xyz] = finalColor;
+}
+
+//||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight_V1 |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight_V1 |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight_V1 |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_TraceSurfaceBounceLight_V1
+[numthreads(8, 8, 8)]
+void ComputeShader_TraceSurfaceBounceLight_V1(uint3 id : SV_DispatchThreadID)
+{
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    float3 singleVoxelSize = VolumeSize / VolumeResolution;
+    float3 worldVoxelPosition = VolumePosition + (voxelPosition * VolumeSize) - (VolumeSize / 2.0);
+
+    //buffers
+    float4 sceneAlbedo = TEX3D_SHARP(SceneAlbedo, voxelPosition);
+    float4 sceneNormal = TEX3D_SHARP(SceneNormal, voxelPosition);
+    sceneNormal = sceneNormal * 2.0f - 1.0f;
+
+    //trace lights
+    float4 finalColor = float4(0, 0, 0, 1);
+    float3 bounceLightColorSample = float3(0, 0, 0);
+
+    if (!(sceneAlbedo.a > 0.0))
+    {
+        Write[id.xyz] = float4(0, 0, 0, 0);
+        return;
+    }
+
+    for (int i = 1; i <= Samples; i++)
+    {
+        float2 noise = float2(GenerateRandomFloat(voxelPosition.xyz * VolumeResolution), GenerateRandomFloat(voxelPosition.xyz * VolumeResolution));
+
+        ///*
+        float3 vector_bounceRayPosition = worldVoxelPosition;
+
+        #if defined (NORMAL_ORIENTED_HEMISPHERE_SAMPLING)
+            float3 vector_bounceRayDirection = SampleHemisphereCosine(noise.x, noise.y, sceneNormal);
+        #else
+            float3 vector_bounceRayDirection = SampleSphereUniform(noise.x, noise.y);
+        #endif
+
+        bool bounceLight_hitSample = false;
+
+        int iterationIndex = 0;
+
+        while (true)
+        {
+            if (PositionInVolumeBounds(vector_bounceRayPosition.xyz) == false)
+                break;
+
+            //keep stepping the ray in world space
+            vector_bounceRayPosition += vector_bounceRayDirection * singleVoxelSize;
+
+            if (iterationIndex >= SURFACE_BOUNCE_OCCLUSION_SKIP_ITERATION)
+            {
+                float3 bounceLight_scaledRayPosition = ((vector_bounceRayPosition + (VolumeSize / 2.0)) - VolumePosition) / VolumeSize;
+                float4 bounceLight_sceneSample = TEX3D_SHARP(DirectLightSurface, bounceLight_scaledRayPosition);
+
+                if (bounceLight_sceneSample.a > 0.0)
+                {
+                    bounceLight_hitSample = true;
+                    bounceLightColorSample += bounceLight_sceneSample.rgb;
+
+                    break;
+                }
+            }
+
+            iterationIndex++;
+        }
+        //*/
+
+        //bounceLightColorSample += float3(noise.x, noise.x, noise.x);
+    }
+
+    bounceLightColorSample /= Samples;
+
+    finalColor.rgb += bounceLightColorSample;
+    finalColor = max(0.0f, finalColor);
+
+    Write[id.xyz] = finalColor;
+}
+
+//||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_AddBuffers
+[numthreads(8, 8, 8)]
+void ComputeShader_AddBuffers(uint3 id : SV_DispatchThreadID)
+{
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    float4 addBufferA = TEX3D_SHARP(AddBufferA, voxelPosition);
+    float4 addBufferB = TEX3D_SHARP(AddBufferB, voxelPosition);
+
+    Write[id.xyz] = addBufferA + addBufferB;
+}
+
+//||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_AverageBuffers
+[numthreads(8, 8, 8)]
+void ComputeShader_AverageBuffers(uint3 id : SV_DispatchThreadID)
+{
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    float4 averageBufferA = TEX3D_SHARP(AverageBufferA, voxelPosition);
+    float4 averageBufferB = TEX3D_SHARP(AverageBufferB, voxelPosition);
+
+    float4 averagedBuffers = (averageBufferA + averageBufferB) * 0.5f;
+
+    Write[id.xyz] = averagedBuffers;
 }
