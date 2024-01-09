@@ -43,6 +43,9 @@ float3 VolumeSize;
 float3 VolumeResolution;
 
 int BounceSamples;
+int MaxBounceSamples;
+
+RWStructuredBuffer<int> DummyComputeBuffer;
 
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight |||||||||||||||||||||||||||||
@@ -125,7 +128,13 @@ void ComputeShader_TraceSurfaceBounceLight(uint3 id : SV_DispatchThreadID)
     finalColor.rgb += bounceLightColorSample;
     finalColor = max(0.0f, finalColor);
 
-    Write[id.xyz] = finalColor;
+    for (int i = 0; i < DummyComputeBuffer.Length; i++)
+    {
+        finalColor = max(0.0f, finalColor);
+    }
+
+    //Write[id.xyz] += finalColor;
+    Write[id.xyz] += finalColor * (1.0f / MaxBounceSamples);
 }
 
 //||||||||||||||||||||||||||||| ComputeShader_TraceVolumeBounceLight |||||||||||||||||||||||||||||
@@ -208,5 +217,6 @@ void ComputeShader_TraceVolumeBounceLight(uint3 id : SV_DispatchThreadID)
     finalColor.rgb += bounceLightColorSample;
     finalColor = max(0.0f, finalColor);
 
-    Write[id.xyz] = finalColor;
+    //Write[id.xyz] = finalColor;
+    Write[id.xyz] += finalColor * (1.0f / MaxBounceSamples);
 }

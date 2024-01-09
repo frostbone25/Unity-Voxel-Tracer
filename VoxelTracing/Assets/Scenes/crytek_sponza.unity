@@ -838,8 +838,8 @@ MonoBehaviour:
   geometryThicknessModifier: 0
   enableAnitAliasing: 0
   blendVoxelResult: 0
-  bounceSamples: 64
-  sampleTiles: 4
+  bounceSurfaceSamples: 1024
+  bounceVolumetricSamples: 512
   bounces: 2
   normalOrientedHemisphereSampling: 0
   gaussianSamples: 4

@@ -2,7 +2,7 @@
 //||||||||||||||||||||||||||||| RANDOM FUNCTIONS |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| RANDOM FUNCTIONS |||||||||||||||||||||||||||||
 
-float _Seed;
+float RandomSeed;
 
 // A single iteration of Bob Jenkins' One-At-A-Time hashing algorithm.
 uint JenkinsHash(uint x)
@@ -74,15 +74,15 @@ float GenerateHashedRandomFloat(uint4 v)
 
 float GenerateRandomFloat(float2 screenUV)
 {
-    _Seed += 1.0;
-    //return GenerateHashedRandomFloat(uint3(screenUV * _ScreenParams.xy, _Seed));
-    return GenerateHashedRandomFloat(uint3(screenUV, _Seed));
+    RandomSeed += 1.0;
+    //return GenerateHashedRandomFloat(uint3(screenUV * _ScreenParams.xy, RandomSeed));
+    return GenerateHashedRandomFloat(uint3(screenUV, RandomSeed));
 }
 
 float GenerateRandomFloat(float3 vec3)
 {
-    _Seed += 1.0;
-    return GenerateHashedRandomFloat(uint4(vec3, _Seed));
+    RandomSeed += 1.0;
+    return GenerateHashedRandomFloat(uint4(vec3, RandomSeed));
 }
 
 //||||||||||||||||||||||||||||| CLASSIC RANDOM FUNCTIONS |||||||||||||||||||||||||||||
