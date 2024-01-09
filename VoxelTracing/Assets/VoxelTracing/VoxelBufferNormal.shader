@@ -3,6 +3,8 @@ Shader "Hidden/VoxelBufferNormal"
     Properties
     {
         _MainTex("Texture", 2D) = "white" {}
+
+        //_VertexExtrusion("Vertex Extrusion", Float) = 0
     }
     SubShader
     {
@@ -11,44 +13,60 @@ Shader "Hidden/VoxelBufferNormal"
             "RenderType" = "Opaque" 
         }
 
-        //Cull Back
-        Cull Off
+        Cull Back
+        //Cull Off
         //ZTest Always
         //ZWrite On
 
         Pass
         {
             CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
+            #pragma vertex vertex_base
+            #pragma fragment fragment_base
+
+            //||||||||||||||||||||||||||||| UNITY3D INCLUDES |||||||||||||||||||||||||||||
+            //||||||||||||||||||||||||||||| UNITY3D INCLUDES |||||||||||||||||||||||||||||
+            //||||||||||||||||||||||||||||| UNITY3D INCLUDES |||||||||||||||||||||||||||||
 
             #include "UnityCG.cginc"
 
-            struct appdata
+            //||||||||||||||||||||||||||||| SHADER PARAMETERS |||||||||||||||||||||||||||||
+            //||||||||||||||||||||||||||||| SHADER PARAMETERS |||||||||||||||||||||||||||||
+            //||||||||||||||||||||||||||||| SHADER PARAMETERS |||||||||||||||||||||||||||||
+
+            //An attempt at geometry thickening during voxelization.
+            //float _VertexExtrusion;
+
+            struct meshData
             {
                 float4 vertex : POSITION;
                 float3 normal : NORMAL;
             };
 
-            struct v2f
+            struct vertexToFragment
             {
-                float4 vertex : SV_POSITION;
+                float4 vertexCameraClipPosition : SV_POSITION;
                 float3 normalWorld : TEXCOORD0;
             };
 
-            v2f vert (appdata v)
+            vertexToFragment vertex_base(meshData data)
             {
-                v2f o;
+                vertexToFragment vertex;
 
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.normalWorld = v.normal;
+                vertex.vertexCameraClipPosition = UnityObjectToClipPos(data.vertex);
 
-                return o;
+                //An attempt at geometry thickening during voxelization.
+                //float4 vertexExtrusionValue = mul(unity_ObjectToWorld, float4(_VertexExtrusion, _VertexExtrusion, _VertexExtrusion, 0));
+                //vertex.vertexCameraClipPosition = UnityObjectToClipPos(data.vertex + data.normal * length(vertexExtrusionValue));
+
+                vertex.normalWorld = data.normal;
+
+                return vertex;
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            float4 fragment_base(vertexToFragment vertex) : SV_Target
             {
-                return float4(i.normalWorld.xyz * 0.5 + 0.5, 1);
+                return float4(vertex.normalWorld.xyz * 0.5 + 0.5, 1);
             }
             ENDCG
         }

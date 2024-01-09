@@ -8,7 +8,7 @@ using System.IO;
 using System;
 using UnityEngine.Experimental.Rendering;
 
-namespace BakedVolumetrics
+namespace UnityVoxelTracer
 {
     public class RenderTextureConverter
     {
@@ -70,10 +70,11 @@ namespace BakedVolumetrics
         /// </summary>
         /// <param name="rt"></param>
         /// <returns></returns>
-        public static Texture2D ConvertFromRenderTexture2D(RenderTexture rt, TextureFormat assetFormat, bool mipChain = false)
+        public static Texture2D ConvertFromRenderTexture2D(RenderTexture rt, TextureFormat assetFormat, bool mipChain = false, bool alphaIsTransparency = false)
         {
             //create our texture2D object to store the slice
             Texture2D output = new Texture2D(rt.width, rt.height, assetFormat, mipChain);
+            output.alphaIsTransparency = alphaIsTransparency;
 
             //make sure the render texture slice is active so we can read from it
             RenderTexture.active = rt;

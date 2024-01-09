@@ -1,0 +1,29 @@
+#include "ComputeTextureSampling.cginc"
+
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+
+Texture3D<float4> AddBufferA;
+Texture3D<float4> AddBufferB;
+
+RWTexture3D<float4> Write;
+
+float3 VolumeResolution;
+
+//||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_AddBuffers
+[numthreads(8, 8, 8)]
+void ComputeShader_AddBuffers(uint3 id : SV_DispatchThreadID)
+{
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    float4 addBufferA = TEX3D_SHARP(AddBufferA, voxelPosition);
+    float4 addBufferB = TEX3D_SHARP(AddBufferB, voxelPosition);
+
+    Write[id.xyz] = addBufferA + addBufferB;
+}
