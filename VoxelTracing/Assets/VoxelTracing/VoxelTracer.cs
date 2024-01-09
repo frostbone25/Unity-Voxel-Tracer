@@ -18,6 +18,10 @@ namespace UnityVoxelTracer
 {
     public class VoxelTracer : MonoBehaviour
     {
+        private static int THREAD_GROUP_SIZE_X = 10;
+        private static int THREAD_GROUP_SIZE_Y = 10;
+        private static int THREAD_GROUP_SIZE_Z = 10;
+
         [Header("Voxelizer Main")]
         public string voxelName = "Voxel";
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f);
@@ -31,6 +35,9 @@ namespace UnityVoxelTracer
         [Range(1, 16)] public int sampleTiles = 4;
         [Range(1, 4)] public int bounces = 1;
         public bool normalOrientedHemisphereSampling = false;
+
+        [Header("Volumetric Baking Options")]
+        [Range(0, 64)] public int gaussianSamples = 0;
 
         [Header("Gizmos")]
         public bool previewBounds = true;
@@ -56,6 +63,7 @@ namespace UnityVoxelTracer
         private ComputeShader voxelBounceLightTracing;
         private ComputeShader addBuffers;
         private ComputeShader averageBuffers;
+        private ComputeShader gaussianBlur;
         private Shader cameraVoxelAlbedoShader;
         private Shader cameraVoxelNormalShader;
         private Shader cameraVoxelEmissiveShader;
@@ -78,6 +86,9 @@ namespace UnityVoxelTracer
 
             if (voxelBounceLightTracing == null)
                 voxelBounceLightTracing = AssetDatabase.LoadAssetAtPath<ComputeShader>(localAssetFolder + "/VoxelBounceLightTracing.compute");
+
+            if (gaussianBlur == null)
+                gaussianBlur = AssetDatabase.LoadAssetAtPath<ComputeShader>(localAssetFolder + "/GaussianBlur3D.compute");
 
             if (addBuffers == null) 
                 addBuffers = AssetDatabase.LoadAssetAtPath<ComputeShader>(localAssetFolder + "/AddBuffers.compute");
@@ -672,6 +683,7 @@ namespace UnityVoxelTracer
             voxelDirectLightTracing.SetVector("VolumeSize", voxelSize);
 
             voxelDirectLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            voxelDirectLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
@@ -751,7 +763,8 @@ namespace UnityVoxelTracer
             voxelDirectLightTracing.SetVector("VolumePosition", transform.position);
             voxelDirectLightTracing.SetVector("VolumeSize", voxelSize);
 
-            voxelDirectLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            //voxelDirectLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            voxelDirectLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
@@ -827,7 +840,8 @@ namespace UnityVoxelTracer
 
             voxelBounceLightTracing.SetFloat("_Seed", Random.value * 1000.0f);
 
-            voxelBounceLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            //voxelBounceLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            voxelBounceLightTracing.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
@@ -898,7 +912,8 @@ namespace UnityVoxelTracer
 
                 voxelBounceLightTracing.SetFloat("_Seed", Random.value * 1000.0f);
 
-                voxelBounceLightTracing.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                //voxelBounceLightTracing.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                voxelBounceLightTracing.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
                 string newVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounce_{1}_tile_{2}.asset", voxelName, 1, tileIndex);
 
@@ -937,7 +952,8 @@ namespace UnityVoxelTracer
                 averageBuffers.SetTexture(kernelAverageBuffers, "AverageBufferB", combinedProxy);
                 averageBuffers.SetTexture(kernelAverageBuffers, "Write", volumeWrite);
 
-                averageBuffers.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                //averageBuffers.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                averageBuffers.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
             }
 
             string combinedVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounce_{1}.asset", voxelName, 1);
@@ -996,7 +1012,8 @@ namespace UnityVoxelTracer
 
             voxelize.SetFloat("_Seed", Random.value * 1000.0f);
 
-            voxelize.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            //voxelize.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            voxelize.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
@@ -1067,7 +1084,8 @@ namespace UnityVoxelTracer
 
                 voxelBounceLightTracing.SetFloat("_Seed", Random.value * 1000.0f);
 
-                voxelBounceLightTracing.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                //voxelBounceLightTracing.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                voxelBounceLightTracing.Dispatch(kernelTraceSurfaceBounceLightV1, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
                 string newVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounceVolume_{1}_tile_{2}.asset", voxelName, 1, tileIndex);
 
@@ -1078,9 +1096,9 @@ namespace UnityVoxelTracer
 
             volumeWrite.Release();
 
-            //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
+            //|||||||||||||||||||||||||||||||||||||||||| AVERAGE ||||||||||||||||||||||||||||||||||||||||||
+            //|||||||||||||||||||||||||||||||||||||||||| AVERAGE ||||||||||||||||||||||||||||||||||||||||||
+            //|||||||||||||||||||||||||||||||||||||||||| AVERAGE ||||||||||||||||||||||||||||||||||||||||||
             int kernelAverageBuffers = averageBuffers.FindKernel("ComputeShader_AverageBuffers");
 
             Texture3D combinedProxy = null;
@@ -1106,7 +1124,8 @@ namespace UnityVoxelTracer
                 averageBuffers.SetTexture(kernelAverageBuffers, "AverageBufferB", combinedProxy);
                 averageBuffers.SetTexture(kernelAverageBuffers, "Write", volumeWrite);
 
-                averageBuffers.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                //averageBuffers.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                averageBuffers.Dispatch(kernelAverageBuffers, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
             }
 
             string combinedVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounceVolume_{1}.asset", voxelName, 1);
@@ -1116,8 +1135,81 @@ namespace UnityVoxelTracer
 
             volumeWrite.Release();
 
-            Debug.Log(string.Format("'TraceBounceVolumeLighting' took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
-            CloseProgressBar();
+            if (gaussianSamples < 1)
+            {
+                Debug.Log(string.Format("'TraceBounceVolumeLighting' took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
+                CloseProgressBar();
+
+                return;
+            }
+            else
+            {
+                Texture3D postAverage = AssetDatabase.LoadAssetAtPath<Texture3D>(combinedVoxelAssetPath);
+
+                volumeWrite = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
+                volumeWrite.dimension = TextureDimension.Tex3D;
+                volumeWrite.volumeDepth = voxelResolution.z;
+                volumeWrite.enableRandomWrite = true;
+                volumeWrite.Create();
+
+                int kernelGaussianBlur = gaussianBlur.FindKernel("ComputeShader_GaussianBlur");
+
+
+                Texture3D blurX = null;
+                Texture3D blurY = null;
+                Texture3D blurZ = null;
+
+                gaussianBlur.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+                gaussianBlur.SetVector("BlurDirection", new Vector4(1, 0, 0, 0));
+                gaussianBlur.SetInt("BlurSamples", gaussianSamples);
+
+                gaussianBlur.SetTexture(kernelGaussianBlur, "Read", postAverage);
+                gaussianBlur.SetTexture(kernelGaussianBlur, "Write", volumeWrite);
+
+                //gaussianBlur.Dispatch(kernelGaussianBlur, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                gaussianBlur.Dispatch(kernelGaussianBlur, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+
+                blurX = renderTextureConverter.ConvertFromRenderTexture3D(volumeWrite, true);
+
+                gaussianBlur.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+                gaussianBlur.SetVector("BlurDirection", new Vector4(0, 1, 0, 0));
+                gaussianBlur.SetInt("BlurSamples", gaussianSamples);
+
+                gaussianBlur.SetTexture(kernelGaussianBlur, "Read", blurX);
+                gaussianBlur.SetTexture(kernelGaussianBlur, "Write", volumeWrite);
+
+                //gaussianBlur.Dispatch(kernelGaussianBlur, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                gaussianBlur.Dispatch(kernelGaussianBlur, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+
+                blurY = renderTextureConverter.ConvertFromRenderTexture3D(volumeWrite, true);
+
+                gaussianBlur.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+                gaussianBlur.SetVector("BlurDirection", new Vector4(0, 0, 1, 0));
+                gaussianBlur.SetInt("BlurSamples", gaussianSamples);
+
+                gaussianBlur.SetTexture(kernelGaussianBlur, "Read", blurY);
+                gaussianBlur.SetTexture(kernelGaussianBlur, "Write", volumeWrite);
+
+                //gaussianBlur.Dispatch(kernelGaussianBlur, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+                gaussianBlur.Dispatch(kernelGaussianBlur, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+
+                //blurZ = renderTextureConverter.ConvertFromRenderTexture3D(volumeWrite, true);
+
+
+
+
+
+
+                string blurredVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounceVolumeBlurred_{1}.asset", voxelName, 1);
+                AssetDatabase.DeleteAsset(blurredVoxelAssetPath);
+
+                renderTextureConverter.Save3D(volumeWrite, blurredVoxelAssetPath, textureObjectSettings);
+
+                volumeWrite.Release();
+
+                Debug.Log(string.Format("'TraceBounceVolumeLighting' took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
+                CloseProgressBar();
+            }
         }
 
         //|||||||||||||||||||||||||||||||||||||||||| STEP 6: COMBINE SURFACE DIRECT AND BOUNCE LIGHTING ||||||||||||||||||||||||||||||||||||||||||
@@ -1153,7 +1245,8 @@ namespace UnityVoxelTracer
             addBuffers.SetTexture(compute_main, "AddBufferB", voxelBounceLightSurfaceBuffer);
             addBuffers.SetTexture(compute_main, "Write", volumeWrite);
 
-            addBuffers.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            //addBuffers.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            addBuffers.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
@@ -1195,6 +1288,10 @@ namespace UnityVoxelTracer
             GetVoxelBuffers();
             CalculateResolution();
 
+            UnityEngine.SceneManagement.Scene activeScene = EditorSceneManager.GetActiveScene();
+            string sceneName = activeScene.name;
+            string sceneVolumetricsFolder = localAssetDataFolder + "/" + sceneName;
+
             //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| COMPUTE SHADER ||||||||||||||||||||||||||||||||||||||||||
@@ -1210,17 +1307,29 @@ namespace UnityVoxelTracer
             volumeWrite.Create();
 
             addBuffers.SetTexture(compute_main, "AddBufferA", voxelDirectLightVolumeBuffer);
-            addBuffers.SetTexture(compute_main, "AddBufferB", voxelBounceLightVolumeBuffer);
+            //addBuffers.SetTexture(compute_main, "AddBufferB", voxelBounceLightVolumeBuffer);
+
+
+
+
+
+            string blurredVoxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_bounceVolumeBlurred_{1}.asset", voxelName, 1);
+            addBuffers.SetTexture(compute_main, "AddBufferB", AssetDatabase.LoadAssetAtPath<Texture3D>(blurredVoxelAssetPath));
+
+
+
+
+
+
+
             addBuffers.SetTexture(compute_main, "Write", volumeWrite);
 
-            addBuffers.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            //addBuffers.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / 8f), Mathf.CeilToInt(voxelResolution.y / 8f), Mathf.CeilToInt(voxelResolution.z / 8f));
+            addBuffers.Dispatch(compute_main, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
-            UnityEngine.SceneManagement.Scene activeScene = EditorSceneManager.GetActiveScene();
-            string sceneName = activeScene.name;
-            string sceneVolumetricsFolder = localAssetDataFolder + "/" + sceneName;
             string voxelAssetPath = sceneVolumetricsFolder + "/" + string.Format("{0}_combinedVolume.asset", voxelName);
 
             RenderTextureConverter renderTextureConverter = new RenderTextureConverter(slicer, rendertextureformat, textureformat);

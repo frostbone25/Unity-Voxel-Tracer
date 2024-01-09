@@ -1,3 +1,7 @@
+#define THREAD_GROUP_SIZE_X 10
+#define THREAD_GROUP_SIZE_Y 10
+#define THREAD_GROUP_SIZE_Z 10
+
 //https://github.com/TwoTailsGames/Unity-Built-in-Shaders/blob/master/CGIncludes/UnityCG.cginc
 //From UnityCG.cginc
 
@@ -110,7 +114,7 @@ RWStructuredBuffer<LightArea> AreaLights;
 //||||||||||||||||||||||||||||| ComputeShader_TraceVolumeDirectLight |||||||||||||||||||||||||||||
 
 #pragma kernel ComputeShader_TraceVolumeDirectLight
-[numthreads(8, 8, 8)]
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_TraceVolumeDirectLight(uint3 id : SV_DispatchThreadID)
 {
     float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
@@ -377,7 +381,7 @@ void ComputeShader_TraceVolumeDirectLight(uint3 id : SV_DispatchThreadID)
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceDirectLight |||||||||||||||||||||||||||||
 
 #pragma kernel ComputeShader_TraceSurfaceDirectLight
-[numthreads(8, 8, 8)]
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
 {
     float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);

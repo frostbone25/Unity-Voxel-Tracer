@@ -1,3 +1,7 @@
+#define THREAD_GROUP_SIZE_X 10
+#define THREAD_GROUP_SIZE_Y 10
+#define THREAD_GROUP_SIZE_Z 10
+
 #include "ComputeTextureSampling.cginc"
 
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
@@ -16,7 +20,7 @@ float3 VolumeResolution;
 //||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
 
 #pragma kernel ComputeShader_AverageBuffers
-[numthreads(8, 8, 8)]
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_AverageBuffers(uint3 id : SV_DispatchThreadID)
 {
     float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
