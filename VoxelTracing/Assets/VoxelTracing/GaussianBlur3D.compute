@@ -1,6 +1,6 @@
-﻿#define THREAD_GROUP_SIZE_X 10
-#define THREAD_GROUP_SIZE_Y 10
-#define THREAD_GROUP_SIZE_Z 10
+﻿#define THREAD_GROUP_SIZE_X 8
+#define THREAD_GROUP_SIZE_Y 8
+#define THREAD_GROUP_SIZE_Z 8
 
 #define pow2(x) (x * x)
 

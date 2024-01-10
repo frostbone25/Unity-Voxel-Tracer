@@ -1,5 +1,7 @@
 #if UNITY_EDITOR
+using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Experimental.GlobalIllumination;
 
 namespace UnityVoxelTracer
 {
@@ -17,24 +19,23 @@ namespace UnityVoxelTracer
         public float lightAngle;
 
         //returns the total size, in bytes, occupied by an instance of this struct in memory.
-        public static int GetByteSize()
-        {
-            int size = 0;
-
-            size += 3 * 4; //lightPosition (12 bytes)
-            size += 3 * 4; //lightDirection (12 bytes)
-            size += 3 * 4; //lightColor (12 bytes)
-
-            size += 4; //lightRange (4 bytes)
-            size += 4; //lightAngle (4 bytes)
-
-            return size;
-        }
+        public static int GetByteSize() => Marshal.SizeOf(typeof(VoxelLightSpot));
 
         //constructor that initializes the VoxelLightSpot instance using a Unity Light component.
         public VoxelLightSpot(Light spotLight)
         {
-            lightColor = new Vector3(spotLight.color.r, spotLight.color.g, spotLight.color.b) * spotLight.intensity;
+            lightColor = new Vector3(spotLight.color.r, spotLight.color.g, spotLight.color.b);
+
+            //Multiply color by light intensity, we are working in HDR anyway so this saves a bit of extra data that we don't have to pass to the compute shader.
+            lightColor *= spotLight.intensity;
+
+            //Do a color space conversion on the CPU side, saves a bit of extra unecessary computation in the compute shader.
+            //[Gamma -> Linear] 2.2
+            //[Linear -> Gamma] 0.454545
+            lightColor.x = Mathf.Pow(lightColor.x, 2.2f);
+            lightColor.y = Mathf.Pow(lightColor.y, 2.2f);
+            lightColor.z = Mathf.Pow(lightColor.z, 2.2f);
+
             lightPosition = spotLight.transform.position;
             lightDirection = spotLight.transform.forward;
             lightRange = spotLight.range;
