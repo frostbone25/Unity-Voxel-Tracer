@@ -217,6 +217,11 @@ void ComputeShader_TraceVolumeBounceLight(uint3 id : SV_DispatchThreadID)
     finalColor.rgb += bounceLightColorSample;
     finalColor = max(0.0f, finalColor);
 
+    for (int i = 0; i < DummyComputeBuffer.Length; i++)
+    {
+        finalColor = max(0.0f, finalColor);
+    }
+
     //Write[id.xyz] = finalColor;
     Write[id.xyz] += finalColor * (1.0f / MaxBounceSamples);
 }

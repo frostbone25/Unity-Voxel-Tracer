@@ -726,7 +726,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!135 &1086677849
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -819,7 +819,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1425651868
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -839,8 +839,8 @@ MonoBehaviour:
   enableAnitAliasing: 0
   blendVoxelResult: 0
   bounceSurfaceSamples: 1024
-  bounceVolumetricSamples: 512
-  bounces: 2
+  bounceVolumetricSamples: 32
+  bounces: 1
   normalOrientedHemisphereSampling: 0
   gaussianSamples: 4
   previewBounds: 1
