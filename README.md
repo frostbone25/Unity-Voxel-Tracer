@@ -6,21 +6,20 @@ With that said, there is still a LOT more to be improved and done...
 
 ### Features
 - Direct Lighting *(Directional, Spot, Point, Area)*
-- Bounce Lighting *(1 bounce)*
-- Emissive Lighting *(1 bounce)*
+- Multi-Bounce Lighting
+- Emissive Lighting
 - Volumetric Lighting
+- 3D Gaussian Blur Filter for Volumetric Lighting
 
 ### TODO / Notes / Ideas:
 - Soft shadow support for Directional/Spot/Point lights.
 - Environment Lighting support.
-- Add functionality for recursively doing multiple bounces. *(right now only 1 bounce is calculated, but more can be calculated recursively. Should be trivial to implement)*
 - Geometry thickening to solve problems with light leakage *(conservative rasterization perhaps?)*
 - Normal Oriented Hemisphere Sampling works and improves quality, but the means of obtaining scene normals should be improved as in certain cases it can cause problems with turning surfaces dark.
-- Optimizing Scene Voxelization step.
+- Optimizing Scene Voxelization even further.
 - Optimizing the main compute shader, high sample counts often crash the editor.
-- Optimizing/Improving the Sample Tiles, this is meant to split up the work load but it still can be too heavy. High tile count also creates too many files on the disk that eat up space.
 - Would like to look into methods for potentially blurring and averaging results to improve quality. Something like a bilaterial blur that is "voxel aware" perhaps?
-- Implement 3D gaussian blur for the "volumetric" tracing.
+- Improving Compute Shader Dispatching, and waiting for when the GPU is actually free of anything. At the moment if you dispatch too often you will hit TDR and the editor will crash. I want to stall the CPU thread until the GPU is free so we can safely do another dispatch without crashing. *(There are cases oddly enough where we hit TDR randomly?)*
 
 # Screenshots
 
