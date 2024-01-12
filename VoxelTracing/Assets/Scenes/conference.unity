@@ -551,14 +551,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   voxelName: Conference
   voxelSize: {x: 83.8, y: 23.1, z: 53.2}
-  voxelDensitySize: 0.5
+  voxelDensitySize: 0.25
   geometryThicknessModifier: 0
   enableAnitAliasing: 0
-  bounceSurfaceSamples: 64
+  bounceSurfaceSamples: 256
   bounceVolumetricSamples: 16
   bounces: 4
   normalOrientedHemisphereSampling: 1
-  millisecondDelayPerSample: 250
+  GPU_Readback_Limit: 1
+  showDetailedProgress: 1
   volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 4
   previewBounds: 1

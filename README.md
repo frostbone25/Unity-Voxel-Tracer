@@ -8,18 +8,16 @@ With that said, there is still a LOT more to be improved and done...
 - Direct Lighting *(Directional, Spot, Point, Area)*
 - Multi-Bounce Lighting
 - Emissive Lighting
+- Environment Lighting
 - Volumetric Lighting
 - 3D Gaussian Blur Filter for Volumetric Lighting
 
 ### TODO / Notes / Ideas:
 - Soft shadow support for Directional/Spot/Point lights.
-- Environment Lighting support.
 - Geometry thickening to solve problems with light leakage *(conservative rasterization perhaps?)*
 - Normal Oriented Hemisphere Sampling works and improves quality, but the means of obtaining scene normals should be improved as in certain cases it can cause problems with turning surfaces dark.
 - Optimizing Scene Voxelization even further.
-- Optimizing the main compute shader, high sample counts often crash the editor.
 - Would like to look into methods for potentially blurring and averaging results to improve quality. Something like a bilaterial blur that is "voxel aware" perhaps?
-- Improving Compute Shader Dispatching, and waiting for when the GPU is actually free of anything. At the moment if you dispatch too often you will hit TDR and the editor will crash. I want to stall the CPU thread until the GPU is free so we can safely do another dispatch without crashing. *(There are cases oddly enough where we hit TDR randomly?)*
 
 # Screenshots
 
@@ -55,3 +53,7 @@ With that said, there is still a LOT more to be improved and done...
 
 ![1](GithubContent/1.png)
 *Ground Truth*
+
+# Sources / References / Credits
+- **[Morgan McGuire](https://casual-effects.com/data/)**:  Sample Scenes.
+- **[pema99](https://gist.github.com/pema99)**: Fixed a big issue regarding TDR and GPU Readbacks for better stability.

@@ -3672,18 +3672,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 881990ab67164b44aa600ec3f1582e57, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  voxelName: Voxel
+  voxelName: FireplaceRoom
   voxelSize: {x: 57.6, y: 31.1, z: 44.6}
   voxelDensitySize: 0.5
-  geometryThicknessModifier: 0
-  enableAnitAliasing: 0
-  bounceSurfaceSamples: 64
-  bounceVolumetricSamples: 32
+  environmentResolution: 128
+  customEnvironmentMap: {fileID: 0}
+  bounceSurfaceSamples: 256
+  bounceVolumetricSamples: 1024
   bounces: 4
+  environmentSurfaceSamples: 64
+  environmentVolumetricSamples: 64
   normalOrientedHemisphereSampling: 1
-  millisecondDelayPerSample: 250
+  GPU_Readback_Limit: 8
+  showDetailedProgress: 1
   volumetricDirectGaussianSamples: 2
-  volumetricBounceGaussianSamples: 4
+  volumetricBounceGaussianSamples: 2
   previewBounds: 1
 --- !u!4 &1377972531
 Transform:

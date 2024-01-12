@@ -1,0 +1,392 @@
+#define THREAD_GROUP_SIZE_X 8
+#define THREAD_GROUP_SIZE_Y 8
+#define THREAD_GROUP_SIZE_Z 8
+
+//https://github.com/TwoTailsGames/Unity-Built-in-Shaders/blob/master/CGIncludes/UnityCG.cginc
+//From UnityCG.cginc
+#define UNITY_PI            3.14159265359f
+#define UNITY_TWO_PI        6.28318530718f
+
+//This acts like a bias for the surface tracing functions, 1 gives best results.
+//Though this can cause issues with thin geometry (i.e. things that are only represented as a single voxel and no neighboring ones)
+//TODO: With voxelization, introduce an adjustable thickness modifier when generating them for the scene.
+#define SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION 1
+
+//[FIX]: (Thanks Pema!) This is a solution to solve the problem with causing TDR/driver timeouts.
+//We force the occlusion checking loop to terminate at some point even if it manages to run forever somehow.
+#define MAX_LOOP_ITERATIONS 2048
+
+#include "ComputeTextureSampling.cginc"
+#include "Random.cginc"
+#include "Sampling.cginc"
+#include "VoxelTracerUtilities.cginc"
+
+//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
+
+#pragma multi_compile_local _ DIRECTIONAL_LIGHTS
+#pragma multi_compile_local _ POINT_LIGHTS
+#pragma multi_compile_local _ SPOT_LIGHTS
+#pragma multi_compile_local _ AREA_LIGHTS
+
+//|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
+
+#if defined (DIRECTIONAL_LIGHTS)
+struct LightDirectional
+{
+    float3 lightDirection;
+    float3 lightColor;
+};
+#endif
+
+#if defined (POINT_LIGHTS)
+struct LightPoint
+{
+    float3 lightPosition;
+    float3 lightColor;
+    float lightRange;
+};
+#endif
+
+#if defined (SPOT_LIGHTS)
+struct LightSpot
+{
+    float3 lightPosition;
+    float3 lightDirection;
+    float3 lightColor;
+    float lightRange;
+    float lightAngle;
+};
+#endif
+
+#if defined (AREA_LIGHTS)
+struct LightArea
+{
+    float3 lightPosition;
+    float3 lightForwardDirection;
+    float3 lightRightDirection;
+    float3 lightUpwardDirection;
+    float2 lightSize;
+    float3 lightColor;
+    float lightRange;
+};
+#endif
+
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+
+Texture3D<float4> SceneAlbedo;
+Texture3D<float4> SceneNormal;
+Texture3D<float4> SceneEmissive;
+
+RWTexture3D<float4> Write;
+
+float3 VolumePosition;
+float3 VolumeSize;
+float3 VolumeResolution;
+
+int Samples;
+
+#if defined (DIRECTIONAL_LIGHTS)
+RWStructuredBuffer<LightDirectional> DirectionalLights;
+#endif
+
+#if defined (POINT_LIGHTS)
+RWStructuredBuffer<LightPoint> PointLights;
+#endif
+
+#if defined (SPOT_LIGHTS)
+RWStructuredBuffer<LightSpot> SpotLights;
+#endif
+
+#if defined (AREA_LIGHTS)
+RWStructuredBuffer<LightArea> AreaLights;
+#endif
+
+//||||||||||||||||||||||||||||| ComputeShader_TraceVolumeDirectLight |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceVolumeDirectLight |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceVolumeDirectLight |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_TraceVolumeDirectLight
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+void ComputeShader_TraceVolumeDirectLight(uint3 id : SV_DispatchThreadID)
+{
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    float3 singleVoxelSize = VolumeSize / VolumeResolution;
+    float3 volumeHalfSize = VolumeSize * 0.5f;
+    float3 worldVoxelPosition = VolumePosition + (voxelPosition * VolumeSize) - volumeHalfSize;
+
+    //float4 sceneAlbedo = TEX3D_SHARP(SceneAlbedo, voxelPosition);
+    float4 sceneAlbedo = SceneAlbedo[id.xyz];
+
+    //[OPTIMIZATION]
+    //Since we are tracing "volumetric light", we don't care about opaque voxels, only non-opaque ones matter.
+    //So if the current voxel is opaque, then we stop here.
+    if (sceneAlbedo.a > 0.0)
+        return;
+
+    float4 finalColor = float4(0, 0, 0, 1);
+
+    int iterationIndex = 0;
+
+    //|||||||||||||||||||||||||||||||||||| DIRECTIONAL LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| DIRECTIONAL LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| DIRECTIONAL LIGHTS ||||||||||||||||||||||||||||||||||||
+    #if defined (DIRECTIONAL_LIGHTS)
+        for (uint x = 0; x < DirectionalLights.Length; x++)
+        {
+            LightDirectional directionalLight = DirectionalLights[x];
+
+            float3 directionalLight_currentRayPosition = worldVoxelPosition;
+            float3 directionalLight_currentRayDirection = -directionalLight.lightDirection;
+            float3 directionalLight_maxPosition = directionalLight_currentRayPosition + directionalLight.lightDirection * length(VolumeSize);
+
+            float3 directionalLightColorSample = directionalLight.lightColor;
+
+            //------------------------------ DIRECT LIGHT ------------------------------
+            //------------------------------ DIRECT LIGHT ------------------------------
+            //------------------------------ DIRECT LIGHT ------------------------------
+
+            bool directionalLight_isOccluded = false;
+
+            iterationIndex = 0;
+
+            //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
+            //while (distance(directionalLight_currentRayPosition, directionalLight_maxPosition) > 0.5f)
+            //while (true) //this is fucking dangerous, I don't like this but our breaks appear to work... so let it be for now.
+            while (iterationIndex < MAX_LOOP_ITERATIONS)
+            {
+                if (PositionInVolumeBounds(directionalLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
+                    break;
+
+                float3 directionalLight_scaledRayPosition = ((directionalLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
+                float directionalLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, directionalLight_scaledRayPosition).a;
+                //float directionalLight_sceneOcclusionSample = SceneAlbedo[directionalLight_scaledRayPosition * VolumeResolution].a;
+
+                if (directionalLight_sceneOcclusionSample > 0.0)
+                {
+                    directionalLight_isOccluded = true;
+                    break;
+                }
+
+                //keep stepping the ray in world space
+                directionalLight_currentRayPosition += directionalLight_currentRayDirection * singleVoxelSize;
+
+                iterationIndex++;
+            }
+
+            if (directionalLight_isOccluded == false)
+            {
+                finalColor.rgb += directionalLightColorSample;
+            }
+        }
+    #endif
+
+    //|||||||||||||||||||||||||||||||||||| SPOT LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| SPOT LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| SPOT LIGHTS ||||||||||||||||||||||||||||||||||||
+    #if defined (SPOT_LIGHTS)
+        for (uint y = 0; y < SpotLights.Length; y++)
+        {
+            LightSpot spotLight = SpotLights[y];
+
+            float distanceToSpotLight = distance(worldVoxelPosition, spotLight.lightPosition);
+            float spotLightDistanceSample = CalculateAttenuation(distanceToSpotLight);
+            float3 spotLightWorldDirection = normalize(worldVoxelPosition - spotLight.lightPosition);
+
+            // Calculate the cosine of the angle corresponding to the spot light's cone angle
+            float cosConeAngle = cos(radians(spotLight.lightAngle / 2.0));
+
+            // Calculate the spot light influence (0.0 to 1.0) based on the angle between the light direction and the spotlight direction
+            float spotLightAngle = saturate((dot(spotLightWorldDirection, spotLight.lightDirection) - cosConeAngle) / (1.0 - cosConeAngle));
+
+            // Calculate the spot light range influence
+            float spotLightRange = saturate(1.0 - (distanceToSpotLight / spotLight.lightRange));
+
+            float3 spotLight_currentRayPosition = worldVoxelPosition;
+            float3 spotLight_currentRayDirection = -spotLightWorldDirection;
+            float3 spotLightColorSample = spotLight.lightColor;
+
+            //------------------------------ DIRECT LIGHT ------------------------------
+            //------------------------------ DIRECT LIGHT ------------------------------
+            //------------------------------ DIRECT LIGHT ------------------------------
+
+            bool spotLight_isOccluded = false;
+            iterationIndex = 0;
+
+            //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
+            while (distance(spotLight_currentRayPosition, spotLight.lightPosition) > 0.5f && iterationIndex < MAX_LOOP_ITERATIONS)
+                //while(true) //this is fucking dangerous, I don't like this but our breaks appear to work... so let it be for now.
+            {
+                if (PositionInVolumeBounds(spotLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
+                    break;
+
+                float3 spotLight_scaledRayPosition = ((spotLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
+                float spotLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, spotLight_scaledRayPosition).a;
+                //float spotLight_sceneOcclusionSample = SceneAlbedo[spotLight_scaledRayPosition * VolumeResolution].a;
+
+                if (spotLight_sceneOcclusionSample > 0.0)
+                {
+                    spotLight_isOccluded = true;
+                    break;
+                }
+
+                //keep stepping the ray in world space
+                spotLight_currentRayPosition += spotLight_currentRayDirection * singleVoxelSize;
+
+                iterationIndex++;
+            }
+
+            if (spotLight_isOccluded == false)
+            {
+                finalColor.rgb += spotLightColorSample * spotLightDistanceSample * spotLightAngle;
+                //finalColor.rgb += spotLightColorSample * spotLightDistanceSample * spotLightAngle * spotLightRange;
+            }
+        }
+    #endif
+
+    //|||||||||||||||||||||||||||||||||||| POINT LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| POINT LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| POINT LIGHTS ||||||||||||||||||||||||||||||||||||
+    #if defined (POINT_LIGHTS)
+        for (uint z = 0; z < PointLights.Length; z++)
+        {
+            LightPoint pointLight = PointLights[z];
+
+            float distanceToPointLight = distance(worldVoxelPosition, pointLight.lightPosition);
+            float3 pointLightColorSample = pointLight.lightColor;
+            float pointLightDistanceSample = CalculateAttenuation(distanceToPointLight);
+
+            float pointLightRange = saturate(1.0 - (distanceToPointLight / pointLight.lightRange));
+
+            float3 pointLightWorldDirection = normalize(worldVoxelPosition - pointLight.lightPosition);
+
+            float3 pointLight_currentRayPosition = worldVoxelPosition;
+            float3 pointLight_currentRayDirection = -pointLightWorldDirection;
+
+            bool pointLight_isOccluded = false;
+            iterationIndex = 0;
+
+            //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
+            while (distance(pointLight_currentRayPosition, pointLight.lightPosition) > 0.5f && iterationIndex < MAX_LOOP_ITERATIONS)
+                //while(true) //this is fucking dangerous, I don't like this but our breaks appear to work... so let it be for now.
+            {
+                if (PositionInVolumeBounds(pointLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
+                    break;
+
+                float3 pointLight_scaledRayPosition = ((pointLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
+                float pointLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, pointLight_scaledRayPosition).a;
+                //float pointLight_sceneOcclusionSample = SceneAlbedo[pointLight_scaledRayPosition * VolumeResolution].a;
+
+                if (pointLight_sceneOcclusionSample > 0.0)
+                {
+                    pointLight_isOccluded = true;
+                    break;
+                }
+
+                //keep stepping the ray in world space
+                pointLight_currentRayPosition += pointLight_currentRayDirection * singleVoxelSize;
+
+                iterationIndex++;
+            }
+
+            if (pointLight_isOccluded == false)
+            {
+                //finalColor.rgb += pointLightColorSample * pointLightDistanceSample;
+                finalColor.rgb += pointLightColorSample * pointLightDistanceSample * pointLightRange;
+            }
+        }
+    #endif
+
+    //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
+    //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
+    #if defined (AREA_LIGHTS)
+        for (uint w = 0; w < AreaLights.Length; w++)
+        {
+            LightArea areaLight = AreaLights[w];
+            float2 areaLightSize = areaLight.lightSize;
+            float3 areaLightForward = areaLight.lightForwardDirection;
+            float3 areaLightRight = areaLight.lightRightDirection;
+            float3 areaLightUp = areaLight.lightUpwardDirection;
+
+            int areaWidthSamples = areaLightSize.x / min(min(singleVoxelSize.x, singleVoxelSize.y), singleVoxelSize.z);
+            int areaHeightSamples = areaLightSize.y / min(min(singleVoxelSize.x, singleVoxelSize.y), singleVoxelSize.z);
+
+            float3 areaLightColorSample = areaLight.lightColor;
+
+            float3 accumulatedAreaLightColor = float3(0, 0, 0);
+
+            for (int x = 0; x < areaWidthSamples; x++)
+            {
+                for (int y = 0; y < areaHeightSamples; y++)
+                {
+                    float3 areaLightSamplePosition = areaLight.lightPosition;
+                    areaLightSamplePosition += ((areaLightRight * (x - (areaWidthSamples / 2)))) * singleVoxelSize;
+                    areaLightSamplePosition += ((areaLightUp * (y - (areaHeightSamples / 2)))) * singleVoxelSize;
+
+                    float distanceToAreaLight = distance(worldVoxelPosition, areaLightSamplePosition);
+                    float areaLightDistanceSample = CalculateAttenuation(distanceToAreaLight);
+                    float3 areaLightWorldDirection = normalize(worldVoxelPosition - areaLightSamplePosition);
+
+                    float3 areaLight_currentRayPosition = worldVoxelPosition;
+                    float3 areaLight_currentRayDirection = -areaLightWorldDirection;
+
+                    //------------------------------ DIRECT LIGHT ------------------------------
+                    //------------------------------ DIRECT LIGHT ------------------------------
+                    //------------------------------ DIRECT LIGHT ------------------------------
+
+                    float areaLightDotProduct = dot(areaLightWorldDirection, areaLightForward);
+
+                    if (areaLightDotProduct > 0.0)
+                    {
+                        bool areaLight_isOccluded = false;
+                        iterationIndex = 0;
+
+                        //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
+                        while (distance(areaLight_currentRayPosition, areaLightSamplePosition) > 0.5f && iterationIndex < MAX_LOOP_ITERATIONS)
+                        {
+                            if (PositionInVolumeBounds(areaLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
+                                break;
+
+                            //keep stepping the ray in world space
+                            areaLight_currentRayPosition += areaLight_currentRayDirection * singleVoxelSize;
+
+                            float3 areaLight_scaledRayPosition = ((areaLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
+                            float areaLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, areaLight_scaledRayPosition).a;
+                            //float areaLight_sceneOcclusionSample = SceneAlbedo[areaLight_scaledRayPosition * VolumeResolution].a;
+
+                            if (areaLight_sceneOcclusionSample > 0.0)
+                            {
+                                areaLight_isOccluded = true;
+                                break;
+                            }
+
+                            iterationIndex++;
+                        }
+
+                        if (areaLight_isOccluded == false)
+                        {
+                            accumulatedAreaLightColor += areaLightColorSample * areaLightDistanceSample * areaLightDotProduct;
+                        }
+                    }
+                }
+            }
+
+            accumulatedAreaLightColor /= areaWidthSamples;
+            accumulatedAreaLightColor /= areaHeightSamples;
+
+            finalColor.rgb += accumulatedAreaLightColor;
+        }
+    #endif
+
+    finalColor = max(0.0f, finalColor);
+
+    Write[id.xyz] = finalColor;
+}

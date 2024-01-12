@@ -726,7 +726,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!135 &1086677849
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -819,7 +819,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1425651868
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -834,13 +834,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   voxelName: Sponza
   voxelSize: {x: 189, y: 79.3, z: 116.5}
-  voxelDensitySize: 1
+  voxelDensitySize: 0.5
   geometryThicknessModifier: 0
   enableAnitAliasing: 0
   bounceSurfaceSamples: 128
   bounceVolumetricSamples: 32
   bounces: 1
   normalOrientedHemisphereSampling: 0
+  GPU_Readback_Limit: 4
   volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 4
   previewBounds: 1

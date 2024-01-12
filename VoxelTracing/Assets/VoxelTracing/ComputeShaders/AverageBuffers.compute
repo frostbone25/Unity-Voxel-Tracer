@@ -1,0 +1,35 @@
+#define THREAD_GROUP_SIZE_X 8
+#define THREAD_GROUP_SIZE_Y 8
+#define THREAD_GROUP_SIZE_Z 8
+
+#include "ComputeTextureSampling.cginc"
+
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+
+Texture3D<float4> AverageBufferA;
+Texture3D<float4> AverageBufferB;
+
+RWTexture3D<float4> Write;
+
+float3 VolumeResolution;
+
+//||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_AverageBuffers |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_AverageBuffers
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+void ComputeShader_AverageBuffers(uint3 id : SV_DispatchThreadID)
+{
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    float4 averageBufferA = TEX3D_SHARP(AverageBufferA, voxelPosition);
+    float4 averageBufferB = TEX3D_SHARP(AverageBufferB, voxelPosition);
+
+    float4 averagedBuffers = (averageBufferA + averageBufferB) * 0.5f;
+
+    Write[id.xyz] = averagedBuffers;
+}
