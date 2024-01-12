@@ -411,7 +411,7 @@ void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
 
     finalColor.rgb = max(0.0f, finalColor.rgb);
     finalColor.rgb *= sceneAlbedo.rgb;
-    finalColor.rgb += SceneEmissive[id.xyz].rgb;
+    //finalColor.rgb += SceneEmissive[id.xyz].rgb;
 
     Write[id.xyz] = finalColor;
 }

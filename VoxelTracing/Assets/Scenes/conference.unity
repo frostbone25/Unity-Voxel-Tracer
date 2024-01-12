@@ -366,7 +366,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!135 &1086677849
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -536,7 +536,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1425651868
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -552,11 +552,14 @@ MonoBehaviour:
   voxelName: Conference
   voxelSize: {x: 83.8, y: 23.1, z: 53.2}
   voxelDensitySize: 0.25
-  geometryThicknessModifier: 0
-  enableAnitAliasing: 0
+  enableEnvironmentLighting: 0
+  environmentResolution: 128
+  customEnvironmentMap: {fileID: 0}
   bounceSurfaceSamples: 256
-  bounceVolumetricSamples: 16
+  bounceVolumetricSamples: 128
   bounces: 4
+  environmentSurfaceSamples: 64
+  environmentVolumetricSamples: 64
   normalOrientedHemisphereSampling: 1
   GPU_Readback_Limit: 1
   showDetailedProgress: 1

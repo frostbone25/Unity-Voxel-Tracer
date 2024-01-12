@@ -43,19 +43,47 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
         uint3 WriteIndex = uint3(AxisIndex, indexPosition.y, indexPosition.z);
         uint2 CameraVoxelRenderIndex = uint2(VolumeResolution.z - indexPosition.z, indexPosition.y);
 
+        if (!(CameraVoxelRender[CameraVoxelRenderIndex].a > 0.0f))
+            return;
+
         WriteIndex += Offsets;
 
         Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
 
+        //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
         return;
     #elif defined (X_NEG) //voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, rtDepth, rtFormat);
-        uint3 Offsets = uint3(0, 0, 0);
+        uint3 Offsets = uint3(-1, 0, 0);
         uint3 WriteIndex = uint3(VolumeResolution.x - AxisIndex, indexPosition.y, indexPosition.z);
         uint2 CameraVoxelRenderIndex = uint2(indexPosition.z, indexPosition.y);
 
+        if (!(CameraVoxelRender[CameraVoxelRenderIndex].a > 0.0f))
+            return;
+
         WriteIndex += Offsets;
 
-        if(!(Write[WriteIndex].a > 0.0f))
+        //if(!(Write[WriteIndex].a > 0.0f))
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        if (Write[WriteIndex].a > 0.0f)
+            Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
+        else
             Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
 
         return;
@@ -64,20 +92,66 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
         uint3 WriteIndex = uint3(indexPosition.x, AxisIndex, indexPosition.z);
         uint2 CameraVoxelRenderIndex = uint2(indexPosition.x, VolumeResolution.z - indexPosition.z);
 
+        if (!(CameraVoxelRender[CameraVoxelRenderIndex].a > 0.0f))
+            return;
+
         WriteIndex += Offsets;
 
-        if(!(Write[WriteIndex].a > 0.0f))
+        //if(!(Write[WriteIndex].a > 0.0f))
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        if (Write[WriteIndex].a > 0.0f)
+            Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
+        else
             Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
 
         return;
     #elif defined (Y_NEG) //voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.z, rtDepth, rtFormat);
-        uint3 Offsets = uint3(0, 0, 0);
+        uint3 Offsets = uint3(0, -1, 0);
         uint3 WriteIndex = uint3(indexPosition.x, VolumeResolution.y - AxisIndex, indexPosition.z);
         uint2 CameraVoxelRenderIndex = uint2(indexPosition.x, indexPosition.z);
 
+        if (!(CameraVoxelRender[CameraVoxelRenderIndex].a > 0.0f))
+            return;
+
         WriteIndex += Offsets;
 
-        if(!(Write[WriteIndex].a > 0.0f))
+        //if(!(Write[WriteIndex].a > 0.0f))
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        if (Write[WriteIndex].a > 0.0f)
+            Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
+        else
             Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
 
         return;
@@ -86,21 +160,67 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
         uint3 WriteIndex = uint3(indexPosition.x, indexPosition.y, AxisIndex);
         uint2 CameraVoxelRenderIndex = uint2(indexPosition.x, indexPosition.y);
 
-        WriteIndex += Offsets;
-
-        if(!(Write[WriteIndex].a > 0.0f))
-            Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        return;
-    #elif defined (Z_NEG) //voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.y, rtDepth, rtFormat);
-        uint3 Offsets = uint3(0, 0, 0);
-        uint3 WriteIndex = uint3(indexPosition.x, indexPosition.y, VolumeResolution.z - AxisIndex);
-        uint2 CameraVoxelRenderIndex = uint2(VolumeResolution.x - indexPosition.x, indexPosition.y);
+        if (!(CameraVoxelRender[CameraVoxelRenderIndex].a > 0.0f))
+            return;
 
         WriteIndex += Offsets;
 
         //if(!(Write[WriteIndex].a > 0.0f))
             //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        if (Write[WriteIndex].a > 0.0f)
+            Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
+        else
+            Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        return;
+    #elif defined (Z_NEG) //voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.y, rtDepth, rtFormat);
+        uint3 Offsets = uint3(0, 0, -1);
+        uint3 WriteIndex = uint3(indexPosition.x, indexPosition.y, VolumeResolution.z - AxisIndex);
+        uint2 CameraVoxelRenderIndex = uint2(VolumeResolution.x - indexPosition.x, indexPosition.y);
+
+        if (!(CameraVoxelRender[CameraVoxelRenderIndex].a > 0.0f))
+            return;
+
+        WriteIndex += Offsets;
+
+        //if(!(Write[WriteIndex].a > 0.0f))
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
+
+        //if (Write[WriteIndex].a > 0.0f)
+            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
+        //else
+            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+
+        if (Write[WriteIndex].a > 0.0f)
+            Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
+        else
+            Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
 
         return;
     #endif

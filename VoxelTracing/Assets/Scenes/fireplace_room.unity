@@ -3659,7 +3659,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1377972530
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3673,11 +3673,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   voxelName: FireplaceRoom
-  voxelSize: {x: 57.6, y: 31.1, z: 44.6}
-  voxelDensitySize: 0.5
+  voxelSize: {x: 57.6, y: 33, z: 46}
+  voxelDensitySize: 0.3
+  enableEnvironmentLighting: 0
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
-  bounceSurfaceSamples: 256
+  bounceSurfaceSamples: 512
   bounceVolumetricSamples: 1024
   bounces: 4
   environmentSurfaceSamples: 64
