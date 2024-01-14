@@ -390,8 +390,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 496284634}
-  m_LocalRotation: {x: 0.097036704, y: 0.402381, z: -0.043395016, w: 0.9092802}
-  m_LocalPosition: {x: -62.648182, y: 34.063038, z: -26.941475}
+  m_LocalRotation: {x: -0.11202878, y: -0.8230159, z: -0.17580298, w: 0.5283822}
+  m_LocalPosition: {x: 9.538333, y: -14.811495, z: 2.232428}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -651,7 +651,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!135 &1086677849
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -928,7 +928,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1425651868
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -948,7 +948,7 @@ MonoBehaviour:
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
   bounceSurfaceSamples: 1024
-  bounceVolumetricSamples: 512
+  bounceVolumetricSamples: 256
   bounces: 4
   environmentSurfaceSamples: 4096
   environmentVolumetricSamples: 64

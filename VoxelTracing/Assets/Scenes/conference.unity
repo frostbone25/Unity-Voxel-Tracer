@@ -511,6 +511,10 @@ PrefabInstance:
       value: conference
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
       propertyPath: m_StaticEditorFlags
       value: 4294967295
       objectReference: {fileID: 0}
@@ -561,7 +565,7 @@ MonoBehaviour:
   environmentSurfaceSamples: 64
   environmentVolumetricSamples: 64
   normalOrientedHemisphereSampling: 1
-  GPU_Readback_Limit: 1
+  GPU_Readback_Limit: 4
   showDetailedProgress: 1
   volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 4

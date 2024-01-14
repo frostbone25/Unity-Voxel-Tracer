@@ -1,8 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.ConstrainedExecution;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
+using Unity.Collections;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -15,17 +17,14 @@ using UnityEngine.Rendering;
  * 
  * NOTE 2: For best volumetric bounce light results, set bounce light samples for the "surface" tracing very high so volumetric bounce results appear cleaner.
  * 
- * NOTE 3: Bounces do work, however energy needs to be lost (or averaged out?) as more bounces are done. 
- * At the moment they will keep additively getting brighter the more bounces you do... which is not how it should be.
- * 
- * NOTE 4: Surface Bounce Samples, and Volumetric Bounce samples are seperated for good reason.
+ * NOTE 3: Surface Bounce Samples, and Volumetric Bounce samples are seperated for good reason.
  * Doing any kind of shading or sampling in the volumetric tracing functions are WAY more heavy than just doing it on surfaces.
  * 
- * NOTE 5: Theoretically, as an optimization for bounced volumetric lighting, we actually don't need to do any additional bounces for it.
+ * NOTE 4: Theoretically, as an optimization for bounced volumetric lighting, we actually don't need to do any additional bounces for it.
  * What matters is that the surface lighting has the bounces it needs, all we do is just throw up the samples in the air and average them.
  * No need to do bounces for the volumetric lighting itself because that will VERY QUICKLY get intensive.
  * 
- * NOTE 6: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
+ * NOTE 5: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
  * 
  * While generating a voxel buffer of scene normals do work, and is rather trivial there are issues with it.
  * When they are used to orient hemispheres for importance sampling, if a voxel normal is facing the wrong direction, the hemisphere will be oriented incorrectly.
@@ -34,13 +33,6 @@ using UnityEngine.Rendering;
  * 
  * In addition to that, sometimes geometry can be only one voxel thin.
  * In that case hemisphere sampling doesn't work, and we should be switching to full sphere sampling so we can get everything around correctly.
- * 
- * NOTE 7: For workload splitting up and optimization.
- * 
- * While the current solutions implemented for splitting up workload by doing 1 sample and accumulating over time does help...
- * We need to find a way to wait for when the GPU is actually complete with such a dispatch, and then make sure that the GPU is free from any computation before issuing another one.
- * It seems like we can't issue dispatches back to back, it seems to overburden the GPU and then we get hit with TDR (driver timeout) which crashes the editor.
- * There has to be a way we can better spread the workload across over time without overburdening the GPU too much, and yet still achieve the high sample counts we want.
 */
 
 namespace UnityVoxelTracer
@@ -64,18 +56,23 @@ namespace UnityVoxelTracer
         //Used to work... although now it appears break voxelization results however?
         private bool enableAnitAliasing = false;
 
-        //[DEPRECATE] Blend multiple voxels together during voxelization.
-        //This isn't really needed, and only used with the old scene voxelization technique.
-        //public bool blendVoxelResult = false;
-
         [Header("Environment Options")]
+        //Should we calculate environment lighting?
         public bool enableEnvironmentLighting = true;
 
+        //Resolution of the captured environment cubemap.
         [Range(32, 4096)] public int environmentResolution = 128;
 
+        //Custom environment cubemap if the user wants to input their own.
         public Cubemap customEnvironmentMap;
 
         [Header("Bake Options")]
+
+        //Amount of samples used for direct light when doing "surface" shading on the voxels.
+        [Range(1, 8192)] public int directSurfaceSamples = 128;
+
+        //Amount of samples used for direct light when doing "volumetric" shading on the voxels.
+        [Range(1, 8192)] public int directVolumetricSamples = 128;
 
         //Amount of samples used to bounce light when doing "surface" shading on the voxels.
         [Range(1, 8192)] public int bounceSurfaceSamples = 128;
@@ -83,26 +80,40 @@ namespace UnityVoxelTracer
         //Amount of samples used to bounce light when doing "volumetric" shading.
         [Range(1, 8192)] public int bounceVolumetricSamples = 64;
 
-        //Amount of surface shading bounces to do.
-        [Range(1, 8)] public int bounces = 4;
-
         //Amount of samples used for environment light when doing "surface" shading on the voxels.
         [Range(1, 8192)] public int environmentSurfaceSamples = 64;
 
         //Amount of samples used for environment light when doing "surface" shading on the voxels.
         [Range(1, 8192)] public int environmentVolumetricSamples = 64;
 
+        //Amount of surface shading bounces to do.
+        [Range(1, 8)] public int bounces = 4;
+
         //Improve surface shading quality by using a cosine hemisphere oriented with the surface normal.
         //Results in better ray allocation at lower sample counts (though at the moment there are issues with scene normals)
         public bool normalOrientedHemisphereSampling = true;
 
+        [Header("Artistic Controls")]
+
+        //Boosts the intensity of the albedo/material colors.
+        [Range(1, 10)] public float albedoBoost = 1; //1 is default, physically accurate.
+
+        //Boosts the intensity of bounced light.
+        [Range(0, 5)] public float indirectIntensity = 1; //1 is default, physically accurate.
+
         [Header("Misc")]
 
+        //Enables an intentional CPU staller.
+        //This is a bit of a hack, but a necessary one that will intentionally stall the CPU after X amount of compute shader dispatches.
+        //The compute shaders we use can get rather expensive, and issuing too many expensive workloads to the GPU can cause TDR/Driver timeouts and crash the editor.
+        //To get around it, we deliberaly stall the CPU by issuing a GPU Readback call to get data back from the GPU.
+        //If we get data back from the GPU that means the GPU is ready for more work and it completed whatever prior task it had.
+        public bool enableGPU_Readback_Limit = true;
+
+        //(If enabled) This adjusts the limit to how many times we do a GPU readback to stall the CPU after X amount of samples.
         [Range(1, 32)] public int GPU_Readback_Limit = 4;
 
-        public bool showDetailedProgress = true;
-
-        [Header("Post Volumetric Bake Options")]
+        [Header("Post Bake Options")]
         //Applies a 3D gaussian blur to the direct volumetric light term to smooth results out.
         //High samples though means that leaks can occur as this is not voxel/geometry aware.
         [Range(0, 64)] public int volumetricDirectGaussianSamples = 0;
@@ -157,7 +168,6 @@ namespace UnityVoxelTracer
         private string voxelCombinedVolumetricBufferAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_combinedVolumetric.asset", voxelName);
         private string environmentMapAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_environment.exr", voxelName);
 
-        private RenderTexture voxelCameraSlice;
         private GameObject voxelCameraGameObject;
         private Camera voxelCamera;
 
@@ -191,8 +201,10 @@ namespace UnityVoxelTracer
         private ComputeBuffer spotLightsBuffer = null;
         private ComputeBuffer areaLightsBuffer = null;
 
-        private static TextureFormat textureformat = TextureFormat.RGBAHalf;
-        private static RenderTextureFormat rendertextureformat = RenderTextureFormat.ARGBHalf;
+        //private static TextureFormat textureformat = TextureFormat.RGBAHalf;
+        //private static RenderTextureFormat rendertextureformat = RenderTextureFormat.ARGBHalf;
+        private static TextureFormat textureformat = TextureFormat.RGBAFloat;
+        private static RenderTextureFormat rendertextureformat = RenderTextureFormat.ARGBFloat;
 
         /// <summary>
         /// Load in necessary resources for the voxel tracer.
@@ -369,30 +381,32 @@ namespace UnityVoxelTracer
             //build directional light buffer
             if (voxelLightDirectionals.Count > 0)
             {
-                directionalLightsBuffer = new ComputeBuffer(voxelLightDirectionals.Count, VoxelLightDirectional.GetByteSize() * voxelLightDirectionals.Count);
+                directionalLightsBuffer = new ComputeBuffer(voxelLightDirectionals.Count, VoxelLightDirectional.GetByteSize());
                 directionalLightsBuffer.SetData(voxelLightDirectionals.ToArray());
             }
 
             //build point light buffer
             if (voxelLightPoints.Count > 0)
             {
-                pointLightsBuffer = new ComputeBuffer(voxelLightPoints.Count, VoxelLightPoint.GetByteSize() * voxelLightPoints.Count);
+                pointLightsBuffer = new ComputeBuffer(voxelLightPoints.Count, VoxelLightPoint.GetByteSize());
                 pointLightsBuffer.SetData(voxelLightPoints.ToArray());
             }
 
             //build spot light buffer
             if (voxelLightSpots.Count > 0)
             {
-                spotLightsBuffer = new ComputeBuffer(voxelLightSpots.Count, VoxelLightSpot.GetByteSize() * voxelLightSpots.Count);
+                spotLightsBuffer = new ComputeBuffer(voxelLightSpots.Count, VoxelLightSpot.GetByteSize());
                 spotLightsBuffer.SetData(voxelLightSpots.ToArray());
             }
 
             //build area light buffer
             if (voxelLightAreas.Count > 0)
             {
-                areaLightsBuffer = new ComputeBuffer(voxelLightAreas.Count, VoxelLightArea.GetByteSize() * voxelLightAreas.Count);
+                areaLightsBuffer = new ComputeBuffer(voxelLightAreas.Count, VoxelLightArea.GetByteSize());
                 areaLightsBuffer.SetData(voxelLightAreas.ToArray());
             }
+
+            Debug.Log(string.Format("[Directional: {0}] [Spot: {1}] [Point: {2}] [Area: {3}]", voxelLightDirectionals.Count, voxelLightSpots.Count, voxelLightPoints.Count, voxelLightAreas.Count));
         }
 
         //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
@@ -460,15 +474,9 @@ namespace UnityVoxelTracer
             //NOTE TO SELF: Keep render texture format high precision.
             //For instance changing it to an 8 bit for the albedo buffer seems to kills color definition.
 
-            //Old voxelization code, it works but it's rather slow.
-            //GenerateVolumeOLD(cameraVoxelAlbedoShader, string.Format("{0}_albedo", voxelName), rendertextureformat, TextureFormat.RGBA32);
-            //GenerateVolumeOLD(cameraVoxelNormalShader, string.Format("{0}_normal", voxelName), rendertextureformat, textureformat);
-            //GenerateVolumeOLD(cameraVoxelEmissiveShader, string.Format("{0}_emissive", voxelName), rendertextureformat, textureformat);
-
-            //New voxelization code, uses a compute shader to speed things up (about 3X faster).
-            GenerateVolumeNew(cameraVoxelAlbedoShader, string.Format("{0}_albedo", voxelName), rendertextureformat, TextureFormat.RGBA32);
-            GenerateVolumeNew(cameraVoxelNormalShader, string.Format("{0}_normal", voxelName), rendertextureformat, textureformat);
-            GenerateVolumeNew(cameraVoxelEmissiveShader, string.Format("{0}_emissive", voxelName), rendertextureformat, textureformat);
+            GenerateVolume(cameraVoxelAlbedoShader, string.Format("{0}_albedo", voxelName), rendertextureformat, TextureFormat.RGBA32);
+            GenerateVolume(cameraVoxelNormalShader, string.Format("{0}_normal", voxelName), rendertextureformat, textureformat);
+            GenerateVolume(cameraVoxelEmissiveShader, string.Format("{0}_emissive", voxelName), rendertextureformat, textureformat);
 
             Debug.Log(string.Format("Generating Albedo / Normal / Emissive buffers took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
         }
@@ -480,7 +488,7 @@ namespace UnityVoxelTracer
         /// <param name="filename"></param>
         /// <param name="rtFormat"></param>
         /// <param name="texFormat"></param>
-        public void GenerateVolumeNew(Shader replacementShader, string filename, RenderTextureFormat rtFormat, TextureFormat savedTextureFormat)
+        public void GenerateVolume(Shader replacementShader, string filename, RenderTextureFormat rtFormat, TextureFormat savedTextureFormat)
         {
             UpdateProgressBar(string.Format("Generating {0}", filename), 0.5f);
 
@@ -527,13 +535,30 @@ namespace UnityVoxelTracer
 
             float timeBeforeRendering = Time.realtimeSinceStartup;
 
+            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
+            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
+            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
+            //disable all keywords
+            SetComputeKeyword(voxelizeScene, "X_POS", false);
+            SetComputeKeyword(voxelizeScene, "X_NEG", false);
+            SetComputeKeyword(voxelizeScene, "Y_POS", false);
+            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
+            SetComputeKeyword(voxelizeScene, "Z_POS", false);
+            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
+
+            //assign the 
+            voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, "Write", combinedSceneVoxel);
+
+            //run the compute shader once, which will make all pixels float4(0, 0, 0, 0) to clean things up.
+            voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //captures the scene on the X axis.
 
             //create a 2D render texture based off our voxel resolution to capture the scene in the X axis.
-            voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, renderTextureDepthBits, rtFormat);
+            RenderTexture voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, renderTextureDepthBits, rtFormat);
             voxelCameraSlice.antiAliasing = enableAnitAliasing ? 8 : 1;
             voxelCameraSlice.filterMode = FilterMode.Point;
             voxelCameraSlice.enableRandomWrite = true;
@@ -597,6 +622,7 @@ namespace UnityVoxelTracer
             }
 
             //release the render texture slice, because we are going to create a new one with new dimensions for the next axis...
+            voxelCameraSlice.DiscardContents(true, true);
             voxelCameraSlice.Release();
 
             //||||||||||||||||||||||||||||||||| Y AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -669,6 +695,7 @@ namespace UnityVoxelTracer
             }
 
             //release the render texture slice, because we are going to create a new one with new dimensions for the next axis...
+            voxelCameraSlice.DiscardContents(true, true);
             voxelCameraSlice.Release();
 
             //||||||||||||||||||||||||||||||||| Z AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -741,6 +768,7 @@ namespace UnityVoxelTracer
             }
 
             //release the render texture slice, because we are done with it...
+            voxelCameraSlice.DiscardContents(true, true);
             voxelCameraSlice.Release();
             Debug.Log(string.Format("{0} rendering took {1} seconds.", filename, Time.realtimeSinceStartup - timeBeforeRendering));
 
@@ -755,6 +783,7 @@ namespace UnityVoxelTracer
             result.filterMode = FilterMode.Point;
 
             //release the scene voxel render texture, because we are done with it...
+            combinedSceneVoxel.DiscardContents(true, true);
             combinedSceneVoxel.Release();
 
             Debug.Log(string.Format("Generating {0} took {1} seconds.", filename, Time.realtimeSinceStartup - timeBeforeFunction));
@@ -785,6 +814,7 @@ namespace UnityVoxelTracer
             environmentProbe.hdr = true;
             environmentProbe.resolution = environmentResolution;
 
+            //use the lightmapping API to our advantage to simplify things.
             Lightmapping.BakeReflectionProbe(environmentProbe, environmentMapAssetPath);
 
             environmentMap = AssetDatabase.LoadAssetAtPath<Cubemap>(environmentMapAssetPath);
@@ -807,33 +837,13 @@ namespace UnityVoxelTracer
         [ContextMenu("Step 2: Trace Direct Surface Lighting")]
         public void TraceDirectSurfaceLighting()
         {
-            UpdateProgressBar(string.Format("Tracing Direct Surface Lighting..."), 0.5f);
+            UpdateProgressBar(string.Format("Preparing direct surface lighting..."), 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
 
             GetResources(); //Get all of our compute shaders ready.
             GetGeneratedContent(); //Load up all of our generated content so we can use it.
             BuildLightComputeBuffers(); //Get all unity scene lights ready to use in the compute shader.
-
-            //fetch our main direct surface light function kernel in the compute shader
-            int ComputeShader_TraceSurfaceDirectLight = voxelDirectSurfaceLight.FindKernel("ComputeShader_TraceSurfaceDirectLight");
-
-            //make sure the compute shader knows the following parameters.
-            voxelDirectSurfaceLight.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
-            voxelDirectSurfaceLight.SetVector("VolumePosition", transform.position);
-            voxelDirectSurfaceLight.SetVector("VolumeSize", voxelSize);
-
-            //make sure the compute shader knows what sets of lights we have.
-            SetComputeKeyword(voxelDirectSurfaceLight, "DIRECTIONAL_LIGHTS", directionalLightsBuffer != null);
-            SetComputeKeyword(voxelDirectSurfaceLight, "POINT_LIGHTS", pointLightsBuffer != null);
-            SetComputeKeyword(voxelDirectSurfaceLight, "SPOT_LIGHTS", spotLightsBuffer != null);
-            SetComputeKeyword(voxelDirectSurfaceLight, "AREA_LIGHTS", areaLightsBuffer != null);
-
-            //feed the compute shader the constructed compute buffers of the unity lights we gathered if they exist.
-            if (directionalLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "DirectionalLights", directionalLightsBuffer);
-            if (pointLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "PointLights", pointLightsBuffer);
-            if (spotLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "SpotLights", spotLightsBuffer);
-            if (areaLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "AreaLights", areaLightsBuffer);
 
             //consruct our render texture that we will write into
             RenderTexture directSurfaceTrace = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
@@ -842,19 +852,65 @@ namespace UnityVoxelTracer
             directSurfaceTrace.enableRandomWrite = true;
             directSurfaceTrace.Create();
 
-            //feed our compute shader the appropriate buffers so we can use them.
-            voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "SceneAlbedo", voxelAlbedoBuffer); //most important one, contains scene color and "occlusion".
-            //voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "SceneNormal", voxelNormalBuffer); //this actually isn't needed and used at the moment.
-            voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "SceneEmissive", voxelEmissiveBuffer); //this just gets added at the end, but it's important.
-            voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "Write", directSurfaceTrace);
+            //fetch our main direct surface light function kernel in the compute shader
+            int ComputeShader_TraceSurfaceDirectLight = voxelDirectSurfaceLight.FindKernel("ComputeShader_TraceSurfaceDirectLight");
 
-            //let the GPU compute direct surface lighting, and hope it can manage it :D
-            voxelDirectSurfaceLight.Dispatch(ComputeShader_TraceSurfaceDirectLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+            //make sure the compute shader knows the following parameters.
+            voxelDirectSurfaceLight.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+            voxelDirectSurfaceLight.SetVector("VolumePosition", transform.position);
+            voxelDirectSurfaceLight.SetVector("VolumeSize", voxelSize);
+            voxelDirectSurfaceLight.SetFloat("AlbedoBoost", albedoBoost);
+            voxelDirectSurfaceLight.SetInt("MaxDirectSamples", directSurfaceSamples);
+
+            //make sure the compute shader knows what sets of lights we have.
+            SetComputeKeyword(voxelDirectSurfaceLight, "DIRECTIONAL_LIGHTS", directionalLightsBuffer != null);
+            SetComputeKeyword(voxelDirectSurfaceLight, "POINT_LIGHTS", pointLightsBuffer != null);
+            SetComputeKeyword(voxelDirectSurfaceLight, "SPOT_LIGHTS", spotLightsBuffer != null);
+            SetComputeKeyword(voxelDirectSurfaceLight, "AREA_LIGHTS", areaLightsBuffer != null);
+
+            //build a small dummy compute buffer, so that we can use GetData later to perform a CPU stall.
+            ComputeBuffer dummyComputeBuffer = new ComputeBuffer(1, 4);
+            dummyComputeBuffer.SetData(new int[1]);
+
+            for (int i = 0; i < directSurfaceSamples; i++)
+            {
+                //randomize the seed for noise sampling (THIS IS IMPORTANT)
+                voxelDirectSurfaceLight.SetFloat("RandomSeed", Random.value * 100000.0f);
+
+                //feed the compute shader the constructed compute buffers of the unity lights we gathered if they exist.
+                if (directionalLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "DirectionalLights", directionalLightsBuffer);
+                if (pointLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "PointLights", pointLightsBuffer);
+                if (spotLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "SpotLights", spotLightsBuffer);
+                if (areaLightsBuffer != null) voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "AreaLights", areaLightsBuffer);
+
+                //feed our compute shader the appropriate buffers so we can use them.
+                voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "SceneAlbedo", voxelAlbedoBuffer); //most important one, contains scene color and "occlusion".
+                voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "SceneNormal", voxelNormalBuffer); //this actually isn't needed and used at the moment.
+                voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "SceneEmissive", voxelEmissiveBuffer); //this just gets added at the end, but it's important.
+                voxelDirectSurfaceLight.SetTexture(ComputeShader_TraceSurfaceDirectLight, "Write", directSurfaceTrace);
+
+                //send a tiny dummy compute buffer so we can do a CPU stall later if enabled.
+                voxelDirectSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceDirectLight, "DummyComputeBuffer", dummyComputeBuffer);
+
+                //let the GPU compute direct surface lighting, and hope it can manage it :D
+                voxelDirectSurfaceLight.Dispatch(ComputeShader_TraceSurfaceDirectLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+
+                //Perform a deliberate stall on the CPU so we can make sure that we don't issue too many dispatches to the GPU and overburden it.
+                if (i % GPU_Readback_Limit == 0 && enableGPU_Readback_Limit)
+                {
+                    int[] dummyData = new int[1];
+                    dummyComputeBuffer.GetData(dummyData);
+                }
+
+                UpdateProgressBar(string.Format("Tracing Direct Surface Light... [SAMPLES: {0} / {1}]", i + 1, directSurfaceSamples), 0.5f);
+            }
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //after surviving the onslaught of computations, we will save our results to the disk.
+
+            UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
 
             //create this so we can convert our 3D render texture to a Texture3D and save it to the disk.
             RenderTextureConverter renderTextureConverter = new RenderTextureConverter(slicer, rendertextureformat, textureformat);
@@ -914,26 +970,6 @@ namespace UnityVoxelTracer
                 mipMaps = true,
             };
 
-            //fetch our main direct volumetric light function kernel in the compute shader
-            int ComputeShader_TraceVolumeDirectLight = voxelDirectVolumetricLight.FindKernel("ComputeShader_TraceVolumeDirectLight");
-
-            //make sure the compute shader knows the following parameters.
-            voxelDirectVolumetricLight.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
-            voxelDirectVolumetricLight.SetVector("VolumePosition", transform.position);
-            voxelDirectVolumetricLight.SetVector("VolumeSize", voxelSize);
-
-            //make sure the compute shader knows what sets of lights we have.
-            SetComputeKeyword(voxelDirectVolumetricLight, "DIRECTIONAL_LIGHTS", directionalLightsBuffer != null);
-            SetComputeKeyword(voxelDirectVolumetricLight, "POINT_LIGHTS", pointLightsBuffer != null);
-            SetComputeKeyword(voxelDirectVolumetricLight, "SPOT_LIGHTS", spotLightsBuffer != null);
-            SetComputeKeyword(voxelDirectVolumetricLight, "AREA_LIGHTS", areaLightsBuffer != null);
-
-            //feed the compute shader the constructed compute buffers of the unity lights we gathered if they exist.
-            if (directionalLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "DirectionalLights", directionalLightsBuffer);
-            if (pointLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "PointLights", pointLightsBuffer);
-            if (spotLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "SpotLights", spotLightsBuffer);
-            if (areaLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "AreaLights", areaLightsBuffer);
-
             //consruct our render texture that we will write into
             RenderTexture volumeWrite = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, rendertextureformat);
             volumeWrite.dimension = TextureDimension.Tex3D;
@@ -941,14 +977,58 @@ namespace UnityVoxelTracer
             volumeWrite.enableRandomWrite = true;
             volumeWrite.Create();
 
-            //feed our compute shader the appropriate buffers so we can use them.
-            voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "SceneAlbedo", voxelAlbedoBuffer); //most important one, contains scene color and "occlusion".
-            //voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "SceneNormal", voxelNormalBuffer); //this actually isn't needed and used at the moment.
-            //voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "SceneEmissive", voxelEmissiveBuffer); //this also isn't used.
-            voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "Write", volumeWrite);
+            //fetch our main direct volumetric light function kernel in the compute shader
+            int ComputeShader_TraceVolumeDirectLight = voxelDirectVolumetricLight.FindKernel("ComputeShader_TraceVolumeDirectLight");
 
-            //let the GPU compute direct volumetric lighting, and hope it can manage it :D
-            voxelDirectVolumetricLight.Dispatch(ComputeShader_TraceVolumeDirectLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+            //make sure the compute shader knows the following parameters.
+            voxelDirectVolumetricLight.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+            voxelDirectVolumetricLight.SetVector("VolumePosition", transform.position);
+            voxelDirectVolumetricLight.SetVector("VolumeSize", voxelSize);
+            voxelDirectVolumetricLight.SetFloat("AlbedoBoost", albedoBoost);
+            voxelDirectVolumetricLight.SetInt("MaxDirectSamples", directVolumetricSamples);
+
+            //make sure the compute shader knows what sets of lights we have.
+            SetComputeKeyword(voxelDirectVolumetricLight, "DIRECTIONAL_LIGHTS", directionalLightsBuffer != null);
+            SetComputeKeyword(voxelDirectVolumetricLight, "POINT_LIGHTS", pointLightsBuffer != null);
+            SetComputeKeyword(voxelDirectVolumetricLight, "SPOT_LIGHTS", spotLightsBuffer != null);
+            SetComputeKeyword(voxelDirectVolumetricLight, "AREA_LIGHTS", areaLightsBuffer != null);
+
+            //build a small dummy compute buffer, so that we can use GetData later to perform a CPU stall.
+            ComputeBuffer dummyComputeBuffer = new ComputeBuffer(1, 4);
+            dummyComputeBuffer.SetData(new int[1]);
+
+            for (int i = 0; i < directVolumetricSamples; i++)
+            {
+                //randomize the seed for noise sampling (THIS IS IMPORTANT)
+                voxelDirectVolumetricLight.SetFloat("RandomSeed", Random.value * 100000.0f);
+
+                //feed the compute shader the constructed compute buffers of the unity lights we gathered if they exist.
+                if (directionalLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "DirectionalLights", directionalLightsBuffer);
+                if (pointLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "PointLights", pointLightsBuffer);
+                if (spotLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "SpotLights", spotLightsBuffer);
+                if (areaLightsBuffer != null) voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "AreaLights", areaLightsBuffer);
+
+                //feed our compute shader the appropriate buffers so we can use them.
+                voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "SceneAlbedo", voxelAlbedoBuffer); //most important one, contains scene color and "occlusion".
+                voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "SceneNormal", voxelNormalBuffer); //this actually isn't needed and used at the moment.
+                voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "SceneEmissive", voxelEmissiveBuffer); //this just gets added at the end, but it's important.
+                voxelDirectVolumetricLight.SetTexture(ComputeShader_TraceVolumeDirectLight, "Write", volumeWrite);
+
+                //send a tiny dummy compute buffer so we can do a CPU stall later if enabled.
+                voxelDirectVolumetricLight.SetBuffer(ComputeShader_TraceVolumeDirectLight, "DummyComputeBuffer", dummyComputeBuffer);
+
+                //let the GPU compute direct surface lighting, and hope it can manage it :D
+                voxelDirectVolumetricLight.Dispatch(ComputeShader_TraceVolumeDirectLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+
+                //Perform a deliberate stall on the CPU so we can make sure that we don't issue too many dispatches to the GPU and overburden it.
+                if (i % GPU_Readback_Limit == 0 && enableGPU_Readback_Limit)
+                {
+                    int[] dummyData = new int[1];
+                    dummyComputeBuffer.GetData(dummyData);
+                }
+
+                UpdateProgressBar(string.Format("Tracing Direct Volumetric Light... [SAMPLES: {0} / {1}]", i + 1, directVolumetricSamples), 0.5f);
+            }
 
             //|||||||||||||||||||||||||||||||||||||||||| POST 3D GAUSSIAN BLUR ||||||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||||||| POST 3D GAUSSIAN BLUR ||||||||||||||||||||||||||||||||||||||||||
@@ -1020,6 +1100,8 @@ namespace UnityVoxelTracer
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //after surviving the onslaught of computations, we will save our results to the disk.
 
+            UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
+
             //save it!
             renderTextureConverter.Save3D(volumeWrite, voxelDirectLightVolumeBufferAssetPath, resultTextureSettings);
 
@@ -1047,7 +1129,7 @@ namespace UnityVoxelTracer
         [ContextMenu("Step 4: Trace Bounce Surface Lighting")]
         public void TraceBounceSurfaceLighting()
         {
-            UpdateProgressBar(string.Format("Bouncing Surface Light... [BOUNCES: {0}] [SAMPLES: {1}]", bounces, bounceSurfaceSamples), 0.5f);
+            UpdateProgressBar("Preparing to bounce surface light...", 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
 
@@ -1109,9 +1191,15 @@ namespace UnityVoxelTracer
             voxelBounceSurfaceLight.SetVector("VolumePosition", transform.position);
             voxelBounceSurfaceLight.SetVector("VolumeSize", voxelSize);
             voxelBounceSurfaceLight.SetInt("MaxBounceSamples", bounceSurfaceSamples);
+            voxelBounceSurfaceLight.SetFloat("IndirectIntensity", indirectIntensity);
+            voxelBounceSurfaceLight.SetFloat("AlbedoBoost", albedoBoost);
 
             //if enabled, use a normal oriented cosine hemisphere for better ray allocation/quality (though it has some issues/quirks)
             SetComputeKeyword(voxelBounceSurfaceLight, "NORMAL_ORIENTED_HEMISPHERE_SAMPLING", normalOrientedHemisphereSampling);
+
+            //build a small dummy compute buffer, so that we can use GetData later to perform a CPU stall.
+            ComputeBuffer dummyComputeBuffer = new ComputeBuffer(1, 4);
+            dummyComputeBuffer.SetData(new int[1]);
 
             for (int i = 0; i < bounces; i++)
             {
@@ -1126,26 +1214,26 @@ namespace UnityVoxelTracer
                     voxelBounceSurfaceLight.SetTexture(ComputeShader_TraceSurfaceBounceLight, "DirectLightSurface", bounceTemp); //important, the main color that we will be bouncing around.
                     voxelBounceSurfaceLight.SetTexture(ComputeShader_TraceSurfaceBounceLight, "Write", volumeWrite);
 
+                    //send a tiny dummy compute buffer so we can do a CPU stall later if enabled.
+                    voxelBounceSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceBounceLight, "DummyComputeBuffer", dummyComputeBuffer);
+
                     //let the GPU compute bounced surface lighting, and hope it can manage it :(
                     voxelBounceSurfaceLight.Dispatch(ComputeShader_TraceSurfaceBounceLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
                     //Perform a deliberate stall on the CPU so we can make sure that we don't issue too many dispatches to the GPU and overburden it.
-                    if (i % GPU_Readback_Limit == 0)
+                    if (i % GPU_Readback_Limit == 0 && enableGPU_Readback_Limit)
                     {
-                        AsyncGPUReadback.Request(volumeWrite, 0);
-                        AsyncGPUReadback.WaitAllRequests();
+                        int[] dummyData = new int[1];
+                        dummyComputeBuffer.GetData(dummyData);
                     }
 
-                    if(showDetailedProgress)
-                        UpdateProgressBar(string.Format("Bouncing Surface Light... [BOUNCES: {0} / {1}] [SAMPLES: {2} / {3}]", i + 1, bounces, j + 1, bounceSurfaceSamples), 0.5f);
+                    UpdateProgressBar(string.Format("Bouncing Surface Light... [BOUNCES: {0} / {1}] [SAMPLES: {2} / {3}]", i + 1, bounces, j + 1, bounceSurfaceSamples), 0.5f);
                 }
 
                 //if we are doing more than 1 bounce
                 if (i > 0)
                 {
                     //convert our finished bounced lighting into a Texture3D so we can reuse it again for the next bounce
-                    //TODO: Issue another compute shader here to start potentially averaging the results of each bounce.
-                    //The problem with the current solution is that too many bounces makes things too bright and there is no energy loss which is not correct.
                     bounceTemp = renderTextureConverter.ConvertFromRenderTexture3D(volumeWrite, true);
                 }
             }
@@ -1155,8 +1243,7 @@ namespace UnityVoxelTracer
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //if we have survived the onslaught of computations... FANTASTIC! lets save our results to the disk before we lose it.
 
-            if (showDetailedProgress)
-                UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
+            UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
 
             //SAVE IT!
             renderTextureConverter.Save3D(volumeWrite, voxelBounceLightSurfaceBufferAssetPath, textureObjectSettings);
@@ -1179,7 +1266,7 @@ namespace UnityVoxelTracer
         [ContextMenu("Step 5: Trace Bounce Volume Lighting")]
         public void TraceBounceVolumeLighting()
         {
-            UpdateProgressBar(string.Format("Bouncing Volume Light... [SAMPLES: {0}]", bounceVolumetricSamples), 0.5f);
+            UpdateProgressBar(string.Format("Preparing to bounce volumetric light..."), 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
 
@@ -1241,6 +1328,12 @@ namespace UnityVoxelTracer
             voxelBounceVolumetricLight.SetVector("VolumePosition", transform.position);
             voxelBounceVolumetricLight.SetVector("VolumeSize", voxelSize);
             voxelBounceVolumetricLight.SetInt("MaxBounceSamples", bounceVolumetricSamples);
+            voxelBounceVolumetricLight.SetFloat("IndirectIntensity", indirectIntensity);
+            voxelBounceVolumetricLight.SetFloat("AlbedoBoost", albedoBoost);
+
+            //build a small dummy compute buffer, so that we can use GetData later to perform a CPU stall.
+            ComputeBuffer dummyComputeBuffer = new ComputeBuffer(1, 4);
+            dummyComputeBuffer.SetData(new int[1]);
 
             for (int i = 0; i < bounceVolumetricSamples; i++)
             {
@@ -1253,17 +1346,19 @@ namespace UnityVoxelTracer
                 voxelBounceVolumetricLight.SetTexture(ComputeShader_TraceVolumeBounceLight, "DirectLightSurface", bounceTemp); //important, the main color that we will be bouncing around.
                 voxelBounceVolumetricLight.SetTexture(ComputeShader_TraceVolumeBounceLight, "Write", volumeWrite);
 
+                //send a tiny dummy compute buffer so we can do a CPU stall later if enabled.
+                voxelBounceVolumetricLight.SetBuffer(ComputeShader_TraceVolumeBounceLight, "DummyComputeBuffer", dummyComputeBuffer);
+
                 voxelBounceVolumetricLight.Dispatch(ComputeShader_TraceVolumeBounceLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
                 //Perform a deliberate stall on the CPU so we can make sure that we don't issue too many dispatches to the GPU and overburden it.
-                if (i % GPU_Readback_Limit == 0)
+                if (i % GPU_Readback_Limit == 0 && enableGPU_Readback_Limit)
                 {
-                    AsyncGPUReadback.Request(volumeWrite, 0);
-                    AsyncGPUReadback.WaitAllRequests();
+                    int[] dummyData = new int[1];
+                    dummyComputeBuffer.GetData(dummyData);
                 }
 
-                if (showDetailedProgress)
-                    UpdateProgressBar(string.Format("Bouncing Volume Light... [SAMPLES: {0} / {1}]", i + 1, bounceVolumetricSamples), 0.5f);
+                UpdateProgressBar(string.Format("Bouncing Volumetric Light... [SAMPLES: {0} / {1}]", i + 1, bounceVolumetricSamples), 0.5f);
             }
 
             //|||||||||||||||||||||||||||||||||||||||||| POST 3D GAUSSIAN BLUR ||||||||||||||||||||||||||||||||||||||||||
@@ -1275,8 +1370,7 @@ namespace UnityVoxelTracer
 
             if (volumetricBounceGaussianSamples > 0)
             {
-                if (showDetailedProgress)
-                    UpdateProgressBar(string.Format("Performing Gaussian Blur..."), 0.5f);
+                UpdateProgressBar(string.Format("Performing Gaussian Blur..."), 0.5f);
 
                 //fetch our main gaussian blur function kernel in the compute shader
                 int ComputeShader_GaussianBlur = gaussianBlur.FindKernel("ComputeShader_GaussianBlur");
@@ -1339,8 +1433,7 @@ namespace UnityVoxelTracer
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //if we have SOMEHOW survived the onslaught of computations... FANTASTIC! lets save our results to the disk before we lose it.
 
-            if (showDetailedProgress)
-                UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
+            UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
 
             //SAVE IT!
             renderTextureConverter.Save3D(volumeWrite, voxelBounceLightVolumeBufferAssetPath, textureObjectSettings);
@@ -1360,7 +1453,7 @@ namespace UnityVoxelTracer
         [ContextMenu("Step 5.5: Trace Environment Surface Lighting")]
         public void TraceEnvironmentSurfaceLighting()
         {
-            UpdateProgressBar(string.Format("Environment Surface Light... [SAMPLES: {0}]", environmentSurfaceSamples), 0.5f);
+            UpdateProgressBar(string.Format("Preparing environment surface lighting..."), 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
 
@@ -1385,6 +1478,8 @@ namespace UnityVoxelTracer
             voxelEnvironmentSurfaceLight.SetVector("VolumePosition", transform.position);
             voxelEnvironmentSurfaceLight.SetVector("VolumeSize", voxelSize);
             voxelEnvironmentSurfaceLight.SetInt("MaxEnvironmentSamples", environmentSurfaceSamples);
+            voxelEnvironmentSurfaceLight.SetFloat("IndirectIntensity", indirectIntensity);
+            voxelEnvironmentSurfaceLight.SetFloat("AlbedoBoost", albedoBoost);
 
             //if enabled, use a normal oriented cosine hemisphere for better ray allocation/quality (though it has some issues/quirks)
             SetComputeKeyword(voxelEnvironmentSurfaceLight, "NORMAL_ORIENTED_HEMISPHERE_SAMPLING", normalOrientedHemisphereSampling);
@@ -1395,6 +1490,10 @@ namespace UnityVoxelTracer
             volumeWrite.volumeDepth = voxelResolution.z;
             volumeWrite.enableRandomWrite = true;
             volumeWrite.Create();
+
+            //build a small dummy compute buffer, so that we can use GetData later to perform a CPU stall.
+            ComputeBuffer dummyComputeBuffer = new ComputeBuffer(1, 4);
+            dummyComputeBuffer.SetData(new int[1]);
 
             for (int i = 0; i < environmentSurfaceSamples; i++)
             {
@@ -1407,18 +1506,20 @@ namespace UnityVoxelTracer
                 voxelEnvironmentSurfaceLight.SetTexture(ComputeShader_TraceSurfaceEnvironmentLight, "EnvironmentMap", environmentMap); //important, the main color that we will be bouncing around.
                 voxelEnvironmentSurfaceLight.SetTexture(ComputeShader_TraceSurfaceEnvironmentLight, "Write", volumeWrite);
 
+                //send a tiny dummy compute buffer so we can do a CPU stall later if enabled.
+                voxelEnvironmentSurfaceLight.SetBuffer(ComputeShader_TraceSurfaceEnvironmentLight, "DummyComputeBuffer", dummyComputeBuffer);
+
                 //let the GPU compute bounced surface lighting, and hope it can manage it :(
                 voxelEnvironmentSurfaceLight.Dispatch(ComputeShader_TraceSurfaceEnvironmentLight, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
                 //Perform a deliberate stall on the CPU so we can make sure that we don't issue too many dispatches to the GPU and overburden it.
-                if (i % GPU_Readback_Limit == 0)
+                if (i % GPU_Readback_Limit == 0 && enableGPU_Readback_Limit)
                 {
-                    AsyncGPUReadback.Request(volumeWrite, 0);
-                    AsyncGPUReadback.WaitAllRequests();
+                    int[] dummyData = new int[1];
+                    dummyComputeBuffer.GetData(dummyData);
                 }
 
-                if (showDetailedProgress)
-                    UpdateProgressBar(string.Format("Environment Surface Light... [SAMPLES: {0} / {1}]", i + 1, environmentSurfaceSamples), 0.5f);
+                UpdateProgressBar(string.Format("Environment Surface Light... [SAMPLES: {0} / {1}]", i + 1, environmentSurfaceSamples), 0.5f);
             }
 
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
@@ -1426,13 +1527,13 @@ namespace UnityVoxelTracer
             //|||||||||||||||||||||||||||||||||||||||||| RESULT ||||||||||||||||||||||||||||||||||||||||||
             //if we have survived the onslaught of computations... FANTASTIC! lets save our results to the disk before we lose it.
 
-            if (showDetailedProgress)
-                UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
+            UpdateProgressBar(string.Format("Saving to disk..."), 0.5f);
 
             //SAVE IT!
             renderTextureConverter.Save3D(volumeWrite, voxelEnvironmentLightSurfaceBufferAssetPath, textureObjectSettings);
 
             //we are done with this, so clean up.
+            volumeWrite.DiscardContents(true, true);
             volumeWrite.Release();
 
             Debug.Log(string.Format("'TraceBounceLighting' took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
@@ -1573,7 +1674,8 @@ namespace UnityVoxelTracer
         //|||||||||||||||||||||||||||||||||||||||||| FINAL: COMPUTE VOXEL TRACING ||||||||||||||||||||||||||||||||||||||||||
         //This is where we combine all of the functions to voxel trace the given volume, with all of the steps.
 
-        [ContextMenu("ComputeVoxelTracing")]
+        /*
+        [ContextMenu("Compute Voxel Tracing")]
         public void ComputeVoxelTracing()
         {
             GenerateVolumes();
@@ -1585,6 +1687,7 @@ namespace UnityVoxelTracer
             CombineSurfaceLighting();
             CombineVolumeLighting();
         }
+        */
 
         //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| GIZMOS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| GIZMOS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
@@ -1613,233 +1716,5 @@ namespace UnityVoxelTracer
         public void UpdateProgressBar(string description, float progress) => EditorUtility.DisplayProgressBar("Voxel Tracer", description, progress);
 
         public void CloseProgressBar() => EditorUtility.ClearProgressBar();
-
-        /*
-        public void GenerateVolumeOLD(Shader replacementShader, string filename, RenderTextureFormat rtFormat, TextureFormat texFormat)
-        {
-            UpdateProgressBar(string.Format("Generating {0}", filename), 0.5f);
-
-            float timeBeforeFunction = Time.realtimeSinceStartup;
-
-            GetResources();
-            SetupAssetFolders();
-            CreateVoxelCamera();
-
-            float xOffset = voxelSize.x / voxelResolution.x;
-            float yOffset = voxelSize.y / voxelResolution.y;
-            float zOffset = voxelSize.z / voxelResolution.z;
-
-            string renderTypeKey = "";
-            int rtDepth = 32;
-
-            voxelCamera.SetReplacementShader(replacementShader, renderTypeKey);
-            voxelCamera.allowMSAA = enableAnitAliasing;
-
-            Shader.SetGlobalFloat("_VertexExtrusion", Mathf.Max(zOffset, Mathf.Max(xOffset, yOffset)) * geometryThicknessModifier);
-
-            Texture2D[] slices_x_neg = new Texture2D[voxelResolution.x];
-            Texture2D[] slices_x_pos = new Texture2D[voxelResolution.x];
-            Texture2D[] slices_y_pos = new Texture2D[voxelResolution.y];
-            Texture2D[] slices_y_neg = new Texture2D[voxelResolution.y];
-            Texture2D[] slices_z_pos = new Texture2D[voxelResolution.z];
-            Texture2D[] slices_z_neg = new Texture2D[voxelResolution.z];
-
-            float timeBeforeRendering = Time.realtimeSinceStartup;
-
-            //||||||||||||||||||||||||||||||||| X |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| X |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| X |||||||||||||||||||||||||||||||||
-            voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, rtDepth, rtFormat);
-            voxelCameraSlice.antiAliasing = enableAnitAliasing ? 8 : 1;
-            voxelCameraSlice.filterMode = FilterMode.Point;
-            voxelCamera.targetTexture = voxelCameraSlice;
-            voxelCamera.orthographicSize = voxelSize.y * 0.5f;
-
-            //--------------------- X POSITIVE ---------------------
-            voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 90.0f, 0);
-
-            for (int i = 0; i < voxelResolution.x; i++)
-            {
-                voxelCameraGameObject.transform.position = transform.position - new Vector3(voxelSize.x / 2.0f, 0, 0) + new Vector3(xOffset * i, 0, 0);
-                voxelCamera.Render();
-                slices_x_neg[i] = RenderTextureConverter.ConvertFromRenderTexture2D(voxelCameraSlice, texFormat);
-            }
-
-            //--------------------- X NEGATIVE ---------------------
-            voxelCameraGameObject.transform.eulerAngles = new Vector3(0, -90.0f, 0);
-
-            for (int i = 0; i < voxelResolution.x; i++)
-            {
-                voxelCameraGameObject.transform.position = transform.position + new Vector3(voxelSize.x / 2.0f, 0, 0) - new Vector3(xOffset * i, 0, 0);
-                voxelCamera.Render();
-                slices_x_pos[i] = RenderTextureConverter.ConvertFromRenderTexture2D(voxelCameraSlice, texFormat);
-            }
-
-            voxelCameraSlice.Release();
-
-            //||||||||||||||||||||||||||||||||| Y |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| Y |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| Y |||||||||||||||||||||||||||||||||
-            voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.z, rtDepth, rtFormat);
-            voxelCameraSlice.antiAliasing = enableAnitAliasing ? 8 : 1;
-            voxelCameraSlice.filterMode = FilterMode.Point;
-            voxelCamera.targetTexture = voxelCameraSlice;
-            voxelCamera.orthographicSize = voxelSize.z * 0.5f;
-
-            //--------------------- Y POSITIVE ---------------------
-            voxelCameraGameObject.transform.eulerAngles = new Vector3(-90.0f, 0, 0);
-
-            for (int i = 0; i < voxelResolution.y; i++)
-            {
-                voxelCameraGameObject.transform.position = transform.position - new Vector3(0, voxelSize.y / 2.0f, 0) + new Vector3(0, yOffset * i, 0);
-                voxelCamera.Render();
-                slices_y_pos[i] = RenderTextureConverter.ConvertFromRenderTexture2D(voxelCameraSlice, texFormat);
-            }
-
-            //--------------------- Y NEGATIVE ---------------------
-            voxelCameraGameObject.transform.eulerAngles = new Vector3(90.0f, 0, 0);
-
-            for (int i = 0; i < voxelResolution.y; i++)
-            {
-                voxelCameraGameObject.transform.position = transform.position + new Vector3(0, voxelSize.y / 2.0f, 0) - new Vector3(0, yOffset * i, 0);
-                voxelCamera.Render();
-                slices_y_neg[i] = RenderTextureConverter.ConvertFromRenderTexture2D(voxelCameraSlice, texFormat);
-            }
-
-            voxelCameraSlice.Release();
-
-            //||||||||||||||||||||||||||||||||| Z |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| Z |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| Z |||||||||||||||||||||||||||||||||
-            voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.y, rtDepth, rtFormat);
-            voxelCameraSlice.antiAliasing = enableAnitAliasing ? 8 : 1;
-            voxelCameraSlice.filterMode = FilterMode.Point;
-            voxelCamera.targetTexture = voxelCameraSlice;
-            voxelCamera.orthographicSize = voxelSize.y * 0.5f;
-
-            //--------------------- Z POSITIVE ---------------------
-            voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 0, 0);
-
-            for (int i = 0; i < voxelResolution.z; i++)
-            {
-                voxelCameraGameObject.transform.position = transform.position - new Vector3(0, 0, voxelSize.z / 2.0f) + new Vector3(0, 0, zOffset * i);
-                voxelCamera.Render();
-                slices_z_pos[i] = RenderTextureConverter.ConvertFromRenderTexture2D(voxelCameraSlice, texFormat);
-            }
-
-            //--------------------- Z NEGATIVE ---------------------
-            voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 180.0f, 0);
-
-            for (int i = 0; i < voxelResolution.z; i++)
-            {
-                voxelCameraGameObject.transform.position = transform.position + new Vector3(0, 0, voxelSize.z / 2.0f) - new Vector3(0, 0, zOffset * i);
-                voxelCamera.Render();
-                slices_z_neg[i] = RenderTextureConverter.ConvertFromRenderTexture2D(voxelCameraSlice, texFormat);
-            }
-
-            voxelCameraSlice.Release();
-
-            Debug.Log(string.Format("{0} rendering took {1} seconds.", filename, Time.realtimeSinceStartup - timeBeforeRendering));
-
-            //--------------------- COMBINE RESULTS ---------------------
-            float timeBeforeCombine = Time.realtimeSinceStartup;
-
-            Texture3D result = new Texture3D(voxelResolution.x, voxelResolution.y, voxelResolution.z, texFormat, true);
-            result.filterMode = FilterMode.Point;
-
-            for (int x = 0; x < result.width; x++)
-            {
-                for (int y = 0; y < result.height; y++)
-                {
-                    for (int z = 0; z < result.depth; z++)
-                    {
-                        Color colorResult = new Color(0, 0, 0, 0);
-
-                        Color color_x_pos = slices_x_pos[(result.width - 1) - x].GetPixel(z, y);
-                        Color color_x_neg = slices_x_neg[x].GetPixel((result.depth - 1) - z, y);
-
-                        Color color_y_pos = slices_y_pos[y].GetPixel(x, (result.depth - 1) - z);
-                        Color color_y_neg = slices_y_neg[(result.height - 1) - y].GetPixel(x, z);
-
-                        Color color_z_pos = slices_z_pos[z].GetPixel(x, y);
-                        Color color_z_neg = slices_z_neg[(result.depth - 1) - z].GetPixel((result.width - 1) - x, y);
-
-                        if (blendVoxelResult)
-                        {
-                            int alphaIndex = 0;
-
-                            if (color_x_pos.a > 0.0f)
-                            {
-                                colorResult += color_x_pos;
-                                alphaIndex++;
-                            }
-
-                            if (color_x_neg.a > 0.0f)
-                            {
-                                colorResult += color_x_neg;
-                                alphaIndex++;
-                            }
-
-                            if (color_y_pos.a > 0.0f)
-                            {
-                                colorResult += color_y_pos;
-                                alphaIndex++;
-                            }
-
-                            if (color_y_neg.a > 0.0f)
-                            {
-                                colorResult += color_y_neg;
-                                alphaIndex++;
-                            }
-
-                            if (color_z_pos.a > 0.0f)
-                            {
-                                colorResult += color_z_pos;
-                                alphaIndex++;
-                            }
-
-                            if (color_z_neg.a > 0.0f)
-                            {
-                                colorResult += color_z_neg;
-                                alphaIndex++;
-                            }
-
-                            if (alphaIndex > 0)
-                                colorResult = new Color(colorResult.r / alphaIndex, colorResult.g / alphaIndex, colorResult.b / alphaIndex, colorResult.a);
-                        }
-                        else
-                        {
-                            if (color_x_pos.a > 0.0f)
-                                colorResult += color_x_pos;
-                            else if (color_x_neg.a > 0.0f)
-                                colorResult += color_x_neg;
-                            else if (color_y_pos.a > 0.0f)
-                                colorResult += color_y_pos;
-                            else if (color_y_neg.a > 0.0f)
-                                colorResult += color_y_neg;
-                            else if (color_z_pos.a > 0.0f)
-                                colorResult += color_z_pos;
-                            else if (color_z_neg.a > 0.0f)
-                                colorResult += color_z_neg;
-                        }
-
-                        result.SetPixel(x, y, z, colorResult);
-                    }
-                }
-            }
-
-            result.Apply();
-
-            Debug.Log(string.Format("{0} combining took {1} seconds.", filename, Time.realtimeSinceStartup - timeBeforeCombine));
-            Debug.Log(string.Format("Generating {0} took {1} seconds.", filename, Time.realtimeSinceStartup - timeBeforeFunction));
-
-            //--------------------- FINAL ---------------------
-            SaveVolumeTexture(filename, result);
-            CleanupVoxelCamera();
-            voxelCameraSlice.Release();
-
-            CloseProgressBar();
-        }
-        */
     }
 }

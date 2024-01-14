@@ -44,6 +44,10 @@ float3 VolumeResolution;
 
 int MaxEnvironmentSamples;
 
+float AlbedoBoost;
+
+RWStructuredBuffer<int> DummyComputeBuffer;
+
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceEnvironmentLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceEnvironmentLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceEnvironmentLight |||||||||||||||||||||||||||||
@@ -59,21 +63,24 @@ void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
     float3 volumeHalfSize = VolumeSize * 0.5f;
     float3 worldVoxelPosition = VolumePosition + (voxelPosition * VolumeSize) - volumeHalfSize;
 
-    float4 sceneAlbedo = TEX3D_SHARP(SceneAlbedo, voxelPosition);
-    //float4 sceneAlbedo = SceneAlbedo[id.xyz];
+    //float4 sceneAlbedo = TEX3D_SHARP(SceneAlbedo, voxelPosition);
+    float4 sceneAlbedo = SceneAlbedo[id.xyz];
 
     //[OPTIMIZATION]
     //Since we are tracing "surface light", we don't care about transparent voxels, only opaque ones matter.
     //So if the current voxel is transparent, then we stop here.
-    if (!(sceneAlbedo.a > 0.0))
+    if (!(sceneAlbedo.a > 0.0)) 
+    {
+        Write[id.xyz] = float4(0, 0, 0, 0);
         return;
+    }
 
     //float4 sceneNormal = TEX3D_SHARP(SceneNormal, voxelPosition);
     float4 sceneNormal = SceneNormal[id.xyz];
     sceneNormal = sceneNormal * 2.0f - 1.0f;
 
     //trace lights
-    float4 finalColor = float4(0, 0, 0, 1);
+    float4 finalColor = float4(0, 0, 0, 0);
 
     float2 noise = float2(GenerateRandomFloat(voxelPosition.xyz * VolumeResolution), GenerateRandomFloat(voxelPosition.xyz * VolumeResolution));
 
@@ -106,7 +113,13 @@ void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
             
             if (PositionInVolumeBounds(vector_environmentRayPosition.xyz, VolumePosition, VolumeSize) == false)
             {
-                finalColor.rgb += TEXCUBE_SHARP(EnvironmentMap, vector_environmentRayDirection).rgb;
+                float3 environmentLightSample = TEXCUBE_SHARP(EnvironmentMap, vector_environmentRayDirection).rgb;
+                float localNdotL = max(0.0, dot(sceneNormal, vector_environmentRayDirection));
+                environmentLightSample *= localNdotL;
+                environmentLightSample *= sceneAlbedo.rgb * AlbedoBoost;
+
+                finalColor.rgb += environmentLightSample;
+
                 break;
             }
         }
@@ -115,7 +128,7 @@ void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
     }
 
     finalColor = max(0.0f, finalColor);
-    finalColor.rgb *= sceneAlbedo.rgb;
 
-    Write[id.xyz] += finalColor * (1.0f / MaxEnvironmentSamples);
+    //Write[id.xyz] += finalColor * (1.0f / MaxEnvironmentSamples);
+    Write[id.xyz] = float4(Write[id.xyz].rgb + finalColor.rgb * (1.0f / MaxEnvironmentSamples), 1);
 }

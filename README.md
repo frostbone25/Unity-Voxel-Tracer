@@ -1,8 +1,6 @@
 # Unity Voxel Tracer
 
-Work in progress voxel tracer. This at the moment is intended to be an offline solution for lighting, so real-time framerates are not a goal at the moment. 
-
-With that said, there is still a LOT more to be improved and done...
+Work in progress voxel tracer. This is intended to be an offline solution for generating lighting/volumetrics.
 
 ### Features
 - Direct Lighting *(Directional, Spot, Point, Area)*
@@ -15,7 +13,6 @@ With that said, there is still a LOT more to be improved and done...
 ### TODO / Notes / Ideas:
 - Soft shadow support for Directional/Spot/Point lights.
 - Geometry thickening to solve problems with light leakage *(conservative rasterization perhaps?)*
-- Normal Oriented Hemisphere Sampling works and improves quality, but the means of obtaining scene normals should be improved as in certain cases it can cause problems with turning surfaces dark.
 - Optimizing Scene Voxelization even further.
 - Would like to look into methods for potentially blurring and averaging results to improve quality. Something like a bilaterial blur that is "voxel aware" perhaps?
 
@@ -55,5 +52,8 @@ With that said, there is still a LOT more to be improved and done...
 *Ground Truth*
 
 # Sources / References / Credits
+- **[pema99](https://gist.github.com/pema99)**: Fixed a big issue regarding TDR and GPU Readbacks for better baking stability, as well as additional advice and tips. *(Thank you!)*
 - **[Morgan McGuire](https://casual-effects.com/data/)**:  Sample Scenes.
-- **[pema99](https://gist.github.com/pema99)**: Fixed a big issue regarding TDR and GPU Readbacks for better stability.
+- **[Light Trees and The Many Lights Problem](https://psychopath.io/post/2020_04_20_light_trees)**
+- **[Unity SRP Core Sampling.hlsl](https://github.com/needle-mirror/com.unity.render-pipelines.core/blob/master/ShaderLibrary/Sampling/Sampling.hlsl)**
+- **[Unity SRP Core Random.hlsl](https://github.com/needle-mirror/com.unity.render-pipelines.core/blob/master/ShaderLibrary/Random.hlsl)**

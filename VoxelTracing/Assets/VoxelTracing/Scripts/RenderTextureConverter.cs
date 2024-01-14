@@ -83,6 +83,9 @@ namespace UnityVoxelTracer
             output.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
             output.Apply();
 
+            rt.DiscardContents(true, true);
+            rt.Release();
+
             return output;
         }
 

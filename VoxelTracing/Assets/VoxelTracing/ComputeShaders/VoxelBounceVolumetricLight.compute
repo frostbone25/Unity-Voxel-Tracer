@@ -47,6 +47,11 @@ float3 VolumeResolution;
 
 int MaxBounceSamples;
 
+float IndirectIntensity;
+float AlbedoBoost;
+
+RWStructuredBuffer<int> DummyComputeBuffer;
+
 //||||||||||||||||||||||||||||| ComputeShader_TraceVolumeBounceLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceVolumeBounceLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceVolumeBounceLight |||||||||||||||||||||||||||||
@@ -94,12 +99,14 @@ void ComputeShader_TraceVolumeBounceLight(uint3 id : SV_DispatchThreadID)
         if (iterationIndex >= SURFACE_BOUNCE_OCCLUSION_SKIP_ITERATION)
         {
             float3 bounceLight_scaledRayPosition = ((vector_bounceRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
-            float4 bounceLight_sceneSample = TEX3D_SHARP(DirectLightSurface, bounceLight_scaledRayPosition);
-            //float4 bounceLight_sceneSample = DirectLightSurface[bounceLight_scaledRayPosition.xyz * VolumeResolution];
+            float4 bounceLight_sceneSample = DirectLightSurface[bounceLight_scaledRayPosition.xyz * VolumeResolution];
 
             //when we hit a sample
             if (bounceLight_sceneSample.a > 0.0)
             {
+                bounceLight_sceneSample.rgb *= IndirectIntensity;
+                //bounceLight_sceneSample.rgb *= sceneAlbedo.rgb * AlbedoBoost;
+
                 bounceLightColorSample += bounceLight_sceneSample.rgb;
                 break;
             }

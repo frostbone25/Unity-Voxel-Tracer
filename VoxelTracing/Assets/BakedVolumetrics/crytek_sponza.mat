@@ -60,7 +60,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _VolumeTexture:
-        m_Texture: {fileID: 11700000, guid: eeb9967cbe9eea745b83600429794869, type: 2}
+        m_Texture: {fileID: 11700000, guid: 10040be2c74d90f449d367c7bd47ecd1, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Floats:
@@ -78,7 +78,7 @@ Material:
     - _OcclusionStrength: 1
     - _Parallax: 0.02
     - _RaymarchJitterStrength: 2
-    - _RaymarchStepSize: 147.3
+    - _RaymarchStepSize: 74.6
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1

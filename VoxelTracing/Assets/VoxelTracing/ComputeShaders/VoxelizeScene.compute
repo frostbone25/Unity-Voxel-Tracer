@@ -36,7 +36,12 @@ int AxisIndex;
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
 {
+    //Write[id.xyz] = float4(0, 1, 0, 1);
+    //return;
+
     uint3 indexPosition = id;
+
+    //Write[id.xyz] = float4(0, 0, 0, 0);
 
     #if defined (X_POS) //voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, rtDepth, rtFormat);
         uint3 Offsets = uint3(0, 0, 0);
@@ -47,10 +52,9 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
             return;
 
         WriteIndex += Offsets;
+        //Write[WriteIndex] = float4(0, 0, 0, 0);
 
         Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
 
         return;
     #elif defined (X_NEG) //voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, rtDepth, rtFormat);
@@ -62,24 +66,7 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
             return;
 
         WriteIndex += Offsets;
-
-        //if(!(Write[WriteIndex].a > 0.0f))
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+        //Write[WriteIndex] = float4(0, 0, 0, 0);
 
         if (Write[WriteIndex].a > 0.0f)
             Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
@@ -96,24 +83,7 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
             return;
 
         WriteIndex += Offsets;
-
-        //if(!(Write[WriteIndex].a > 0.0f))
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+        //Write[WriteIndex] = float4(0, 0, 0, 0);
 
         if (Write[WriteIndex].a > 0.0f)
             Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
@@ -130,24 +100,7 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
             return;
 
         WriteIndex += Offsets;
-
-        //if(!(Write[WriteIndex].a > 0.0f))
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+        //Write[WriteIndex] = float4(0, 0, 0, 0);
 
         if (Write[WriteIndex].a > 0.0f)
             Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
@@ -164,24 +117,7 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
             return;
 
         WriteIndex += Offsets;
-
-        //if(!(Write[WriteIndex].a > 0.0f))
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+        //Write[WriteIndex] = float4(0, 0, 0, 0);
 
         if (Write[WriteIndex].a > 0.0f)
             Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
@@ -198,24 +134,7 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
             return;
 
         WriteIndex += Offsets;
-
-        //if(!(Write[WriteIndex].a > 0.0f))
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = float4(0.5, 0, 0, 1);
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = float4(0.5, 0.5, 0.5, 1);
-
-        //if (Write[WriteIndex].a > 0.0f)
-            //Write[WriteIndex] = (Write[WriteIndex] + float4(0.5, 0.5, 0.5, 1)) * 0.5;
-        //else
-            //Write[WriteIndex] = CameraVoxelRender[CameraVoxelRenderIndex];
+        //Write[WriteIndex] = float4(0, 0, 0, 0);
 
         if (Write[WriteIndex].a > 0.0f)
             Write[WriteIndex] = (Write[WriteIndex] + CameraVoxelRender[CameraVoxelRenderIndex]) * 0.5;
@@ -224,4 +143,8 @@ void ComputeShader_VoxelizeScene(uint3 id : SV_DispatchThreadID)
 
         return;
     #endif
+
+    Write[id.xyz] = float4(0, 0, 0, 0);
+
+    return;
 }

@@ -16,6 +16,7 @@
         [Toggle(OPAQUE_RESULT)] _RaymarchOpaque("Raymarch Opaque", Float) = 1
         _RaymarchJitterStrength("Raymarch Jitter Strength", Float) = 1
         _Density("Non Opaque Density", Float) = 1
+        _Brightness("Brightness", Float) = 1
     }
 
     SubShader
@@ -59,6 +60,7 @@
             float _RaymarchSteps;
             float _RaymarchJitterStrength;
             float _Density;
+            float _Brightness;
             float4 _VolumePos;
             float4 _VolumeSize;
             sampler3D _VolumeTexture;
@@ -194,14 +196,14 @@
                     if (all(isInBox))
                     {
                         #if defined (OPAQUE_RESULT)
-                            float4 sampledColor = tex3Dlod(_VolumeTexture, float4(scaledPos, _MipLevel));
+                            float4 sampledColor = tex3Dlod(_VolumeTexture, float4(scaledPos, _MipLevel)) * _Brightness;
 
                             result += sampledColor;
 
                             if (result.a > 0.0f)
                                 break;
                         #else
-                            float4 sampledColor = tex3Dlod(_VolumeTexture, float4(scaledPos, _MipLevel));
+                            float4 sampledColor = tex3Dlod(_VolumeTexture, float4(scaledPos, _MipLevel)) * _Brightness;
 
                             if (result.a > 1.0f)
                                 break;

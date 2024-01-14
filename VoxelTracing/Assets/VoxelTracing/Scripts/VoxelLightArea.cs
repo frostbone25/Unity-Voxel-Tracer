@@ -5,24 +5,35 @@ using UnityEngine;
 namespace UnityVoxelTracer
 {
     /// <summary>
-    /// Area Light.
+    /// Area Light (640 BITS | 80 BYTES)
     /// 
     /// <para>Gets the necessary data from a Unity Area Light, to be used by the voxel tracer. </para>
     /// </summary>
     public struct VoxelLightArea
     {
-        public Vector3 lightPosition;
-        public Vector3 lightForwardDirection;
-        public Vector3 lightRightDirection;
-        public Vector3 lightUpwardDirection;
-        public Vector2 lightSize;
-        public Vector3 lightColor;
-        public float lightRange;
+        public Vector3 lightPosition; //96 BITS | 12 BYTES
+        public Vector3 lightForwardDirection; //96 BITS | 12 BYTES
+        public Vector3 lightRightDirection; //96 BITS | 12 BYTES
+        public Vector3 lightUpwardDirection; //96 BITS | 12 BYTES
+        public Vector2 lightSize; //64 BITS | 8 BYTES
+        public Vector3 lightColor; //96 BITS | 12 BYTES
+        public float lightRange; //32 BITS | 4 BYTES
 
-        //returns the total size, in bytes, occupied by an instance of this struct in memory.
+        //https://developer.nvidia.com/content/understanding-structured-buffer-performance
+        //Additional padding to the structure so that it stays divisible by 128 bits.
+        public float UNUSED_0; //32 BITS | 4 BYTES
+        public float UNUSED_1; //32 BITS | 4 BYTES
+
+        /// <summary>
+        /// Returns the total size, in bytes, occupied by an instance of this struct in memory.
+        /// </summary>
+        /// <returns></returns>
         public static int GetByteSize() => Marshal.SizeOf(typeof(VoxelLightArea));
 
-        //constructor that initializes the VoxelLightDirectional instance using a Unity Light component.
+        /// <summary>
+        /// Constructor that initializes the VoxelLightDirectional instance using a Unity Light component.
+        /// </summary>
+        /// <param name="areaLight"></param>
         public VoxelLightArea(Light areaLight)
         {
             lightColor = new Vector3(areaLight.color.r, areaLight.color.g, areaLight.color.b);
@@ -43,6 +54,9 @@ namespace UnityVoxelTracer
             lightPosition = areaLight.transform.position;
             lightRange = areaLight.range;
             lightSize = areaLight.areaSize;
+
+            UNUSED_0 = 0;
+            UNUSED_1 = 0;
         }
     }
 }

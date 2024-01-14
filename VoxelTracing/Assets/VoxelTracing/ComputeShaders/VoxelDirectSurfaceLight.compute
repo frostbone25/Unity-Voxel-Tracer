@@ -1,3 +1,16 @@
+//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
+
+#pragma multi_compile_local _ DIRECTIONAL_LIGHTS
+#pragma multi_compile_local _ POINT_LIGHTS
+#pragma multi_compile_local _ SPOT_LIGHTS
+#pragma multi_compile_local _ AREA_LIGHTS
+
+//|||||||||||||||||||||||||||||||||||||| DEFINES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| DEFINES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| DEFINES ||||||||||||||||||||||||||||||||||||||
+
 #define THREAD_GROUP_SIZE_X 8
 #define THREAD_GROUP_SIZE_Y 8
 #define THREAD_GROUP_SIZE_Z 8
@@ -16,64 +29,15 @@
 //We force the occlusion checking loop to terminate at some point even if it manages to run forever somehow.
 #define MAX_LOOP_ITERATIONS 2048
 
+//|||||||||||||||||||||||||||||||||||||| INCLUDES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| INCLUDES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| INCLUDES ||||||||||||||||||||||||||||||||||||||
+
 #include "ComputeTextureSampling.cginc"
 #include "Random.cginc"
 #include "Sampling.cginc"
 #include "VoxelTracerUtilities.cginc"
-
-//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
-//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
-//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
-
-#pragma multi_compile_local _ DIRECTIONAL_LIGHTS
-#pragma multi_compile_local _ POINT_LIGHTS
-#pragma multi_compile_local _ SPOT_LIGHTS
-#pragma multi_compile_local _ AREA_LIGHTS
-
-//|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
-//|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
-//|||||||||||||||||||||||||||||||||||||| STRUCTS ||||||||||||||||||||||||||||||||||||||
-
-#if defined (DIRECTIONAL_LIGHTS)
-struct LightDirectional
-{
-    float3 lightDirection;
-    float3 lightColor;
-};
-#endif
-
-#if defined (POINT_LIGHTS)
-struct LightPoint
-{
-    float3 lightPosition;
-    float3 lightColor;
-    float lightRange;
-};
-#endif
-
-#if defined (SPOT_LIGHTS)
-struct LightSpot
-{
-    float3 lightPosition;
-    float3 lightDirection;
-    float3 lightColor;
-    float lightRange;
-    float lightAngle;
-};
-#endif
-
-#if defined (AREA_LIGHTS)
-struct LightArea
-{
-    float3 lightPosition;
-    float3 lightForwardDirection;
-    float3 lightRightDirection;
-    float3 lightUpwardDirection;
-    float2 lightSize;
-    float3 lightColor;
-    float lightRange;
-};
-#endif
+#include "UnityLights.cginc"
 
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
@@ -89,23 +53,11 @@ float3 VolumePosition;
 float3 VolumeSize;
 float3 VolumeResolution;
 
-int Samples;
+int MaxDirectSamples;
 
-#if defined (DIRECTIONAL_LIGHTS)
-RWStructuredBuffer<LightDirectional> DirectionalLights;
-#endif
+float AlbedoBoost;
 
-#if defined (POINT_LIGHTS)
-RWStructuredBuffer<LightPoint> PointLights;
-#endif
-
-#if defined (SPOT_LIGHTS)
-RWStructuredBuffer<LightSpot> SpotLights;
-#endif
-
-#if defined (AREA_LIGHTS)
-RWStructuredBuffer<LightArea> AreaLights;
-#endif
+RWStructuredBuffer<int> DummyComputeBuffer;
 
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceDirectLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceDirectLight |||||||||||||||||||||||||||||
@@ -115,83 +67,120 @@ RWStructuredBuffer<LightArea> AreaLights;
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
 {
-    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
-    voxelPosition /= VolumeResolution.xyz;
-
-    float3 singleVoxelSize = VolumeSize / VolumeResolution;
-    float3 volumeHalfSize = VolumeSize * 0.5f;
-    float3 worldVoxelPosition = VolumePosition + (voxelPosition * VolumeSize) - volumeHalfSize;
-
-    //float4 sceneAlbedo = TEX3D_SHARP(SceneAlbedo, voxelPosition);
+    //for raw scene material colors (RGB) and occlusion checking (A)
     float4 sceneAlbedo = SceneAlbedo[id.xyz];
-    //float4 sceneAlbedo = SceneAlbedo[id.xyz - uint3(1, 1, 1)];
-
-
-    //Write[id.xyz + uint3(1, 1, 1)] = sceneAlbedo;
-    //Write[id.xyz] = sceneAlbedo;
-    //return;
 
     //[OPTIMIZATION]
     //Since we are tracing "surface light", we don't care about transparent voxels, only opaque ones matter.
-    //So if the current voxel is transparent, then we stop here.
-    if (sceneAlbedo.a < 1.0f)
+    //So if the current voxel is transparent, then we stop here. Saves us some computational power.
+    if (sceneAlbedo.a < 1.0f) 
+    {
+        Write[id.xyz] = float4(0, 0, 0, 0);
         return;
+    }
 
-    //trace lights
-    float4 finalColor = float4(0, 0, 0, 1);
+    //required for doing NdotL
+    float4 sceneNormal = SceneNormal[id.xyz];
+    sceneNormal = sceneNormal * 2.0f - 1.0f; //scale it to [-1, 1] since scene normals are packed into [0,1]
 
+    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
+    voxelPosition /= VolumeResolution.xyz;
+
+    //precompute some values ahead of time that will be used during tracing.
+    float3 singleVoxelSize = VolumeSize / VolumeResolution; //the size of a single voxel
+    float3 volumeHalfSize = VolumeSize * 0.5f; //half the size of the volume
+    float3 worldVoxelPosition = VolumePosition + (voxelPosition * VolumeSize) - volumeHalfSize; //our current position in world space
+    float minVoxelSize = min(singleVoxelSize.x, min(singleVoxelSize.y, singleVoxelSize.z)); //the minimum size of a single voxel.
+
+    //this will accumulate light colors
+    float3 finalColor = float3(0, 0, 0);
+
+    //loop index used to do a "shadow ray bias" when tracing.
+    //this is also used to make sure that we can keep track of loop iterations and terminate when we hit the maximum amount of iterations.
     int iterationIndex = 0;
 
     //|||||||||||||||||||||||||||||||||||| DIRECTIONAL LIGHTS ||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||| DIRECTIONAL LIGHTS ||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||| DIRECTIONAL LIGHTS ||||||||||||||||||||||||||||||||||||
     #if defined (DIRECTIONAL_LIGHTS)
-        for (uint x = 0; x < DirectionalLights.Length; x++)
+        if (DirectionalLights.Length > 0) //If there are directional lights that exist
         {
-            LightDirectional directionalLight = DirectionalLights[x];
+            //get a random float value [0..1] and scale it to the size of the directional lights array.
+            //this will allow us to randomly pick a light from the array.
+            float randomDirectionalLightIndexNoise = GenerateRandomFloat(voxelPosition.xyz * VolumeResolution);
+            uint randomDirectionalLightIndex = uint(randomDirectionalLightIndexNoise * DirectionalLights.Length);
 
+            //the main light object we have selected
+            LightDirectional directionalLight = DirectionalLights[randomDirectionalLightIndex];
+
+            //get the light direction, we are going to do some modifcations to it...
+            float3 directionalLightDirection = directionalLight.lightDirection;
+
+            //compute soft shadows by essentially jittering the light direction with noise, and the given light shadow angle.
+            float directionalLightShadowAngle = radians(directionalLight.shadowAngle);
+            float directionalLightNoiseX = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * (directionalLightShadowAngle * 0.5);
+            float directionalLightNoiseY = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * (directionalLightShadowAngle * 0.5);
+            float directionalLightNoiseZ = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * (directionalLightShadowAngle * 0.5);
+            float3 directionalLightNoise = float3(directionalLightNoiseX, directionalLightNoiseY, directionalLightNoiseZ);
+            directionalLightDirection += directionalLightNoise;
+
+            //our ray marching parameters
             float3 directionalLight_currentRayPosition = worldVoxelPosition;
-            float3 directionalLight_currentRayDirection = -directionalLight.lightDirection;
-            float3 directionalLight_maxPosition = directionalLight_currentRayPosition + directionalLight.lightDirection * length(VolumeSize);
+            float3 directionalLight_currentRayDirection = -directionalLightDirection; //reversed because need to shoot a ray from the current surface we are on, towards the light source.
+            float3 directionalLight_maxPosition = directionalLight_currentRayPosition + directionalLightDirection * length(VolumeSize);
 
+            //get the primary light color (this already factors in the intensity of the light). 
+            //this will also be modified with additional light shading later.
             float3 directionalLightColorSample = directionalLight.lightColor.rgb;
 
-            //------------------------------ DIRECT LIGHT ------------------------------
-            //------------------------------ DIRECT LIGHT ------------------------------
-            //------------------------------ DIRECT LIGHT ------------------------------
-
+            //gets set by the while loop later on to determine if the light is occluded at the current voxel.
             bool directionalLight_isOccluded = false;
 
+            //reset so we can keep track of the amount of times we iterate through a loop.
             iterationIndex = 0;
 
-            //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
-            //while (true)
-            while (iterationIndex < MAX_LOOP_ITERATIONS && iterationIndex < MAX_LOOP_ITERATIONS)
+            //Here we will keep marching our ray until we...
+            // - hit an opaque voxel.
+            // - go out of the volume bounds.
+            // - hit the max amount of iterations
+            //NOTE: This is the most expensive operation
+            while (iterationIndex < MAX_LOOP_ITERATIONS)
             {
+                //if the ray goes out of bounds, stop the loop
                 if (PositionInVolumeBounds(directionalLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
                     break;
 
                 //keep stepping the ray in world space
                 directionalLight_currentRayPosition += directionalLight_currentRayDirection * singleVoxelSize;
 
+                //do a "shadow ray bias" so we can avoid a false occlusion bias hitting potentially the current pixel we originated from.
                 if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
                 {
+                    //normalize the ray from world space, to simple local 3D texture coordinates.
                     float3 directionalLight_scaledRayPosition = ((directionalLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
-                    float directionalLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, directionalLight_scaledRayPosition).a;
-                    //float directionalLight_sceneOcclusionSample = SceneAlbedo[directionalLight_scaledRayPosition * VolumeResolution].a;
 
+                    //sample the scene albedo buffer's alpha channel only for occlusion checking.
+                    //float directionalLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, directionalLight_scaledRayPosition).a;
+                    float directionalLight_sceneOcclusionSample = SceneAlbedo[directionalLight_scaledRayPosition * VolumeResolution].a;
+
+                    //if the alpha value is not zero (opaque) then we have hit a surface.
                     if (directionalLight_sceneOcclusionSample > 0.0)
                     {
-                        directionalLight_isOccluded = true;
-                        break;
+                        directionalLight_isOccluded = true; //we are occluded, so we don't shade the surface
+                        break; //stop the loop
                     }
                 }
 
+                //increment the amount of times this loop runs
                 iterationIndex++;
             }
 
+            //if the current surface we are on is not occluded from the current light source, shade it.
             if (directionalLight_isOccluded == false)
             {
+                directionalLightColorSample *= max(0.0f, dot(sceneNormal, directionalLight_currentRayDirection)); //perform NdotL
+                directionalLightColorSample /= 1.0 / DirectionalLights.Length; //correction for random light picking
+
                 finalColor.rgb += directionalLightColorSample;
             }
         }
@@ -201,64 +190,109 @@ void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
     //|||||||||||||||||||||||||||||||||||| SPOT LIGHTS ||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||| SPOT LIGHTS ||||||||||||||||||||||||||||||||||||
     #if defined (SPOT_LIGHTS)
-        for (uint y = 0; y < SpotLights.Length; y++)
+        if(SpotLights.Length > 0) //If there are spot lights that exist
         {
-            LightSpot spotLight = SpotLights[y];
+            //get a random float value [0..1] and scale it to the size of the spot lights array.
+            //this will allow us to randomly pick a light from the array.
+            float randomSpotLightIndexNoise = GenerateRandomFloat(voxelPosition.xyz * VolumeResolution);
+            uint randomSpotLightIndex = uint(randomSpotLightIndexNoise * SpotLights.Length);
 
-            float distanceToSpotLight = distance(worldVoxelPosition, spotLight.lightPosition);
-            float spotLightDistanceSample = CalculateAttenuation(distanceToSpotLight);
-            float3 spotLightWorldDirection = normalize(worldVoxelPosition - spotLight.lightPosition);
+            //the main light object we have selected
+            LightSpot spotLight = SpotLights[randomSpotLightIndex];
 
-            // Calculate the cosine of the angle corresponding to the spot light's cone angle
-            float cosConeAngle = cos(radians(spotLight.lightAngle / 2.0));
+            //get the light position, we are going to do some modifcations to it...
+            float3 spotLightPosition = spotLight.lightPosition;
 
-            // Calculate the spot light influence (0.0 to 1.0) based on the angle between the light direction and the spotlight direction
-            float spotLightAngle = saturate((dot(spotLightWorldDirection, spotLight.lightDirection) - cosConeAngle) / (1.0 - cosConeAngle));
+            //compute soft shadows by essentially jittering the light position with noise, and the given shadow radius.
+            float spotLightPositionNoiseX = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * spotLight.shadowRadius;
+            float spotLightPositionNoiseY = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * spotLight.shadowRadius;
+            float spotLightPositionNoiseZ = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * spotLight.shadowRadius;
+            float3 spotLightPositionNoise = float3(spotLightPositionNoiseX, spotLightPositionNoiseY, spotLightPositionNoiseZ);
+            spotLightPosition += spotLightPositionNoise;
 
-            // Calculate the spot light range influence
-            float spotLightRange = saturate(1.0 - (distanceToSpotLight / spotLight.lightRange));
+            //compute the current direction to the spot light position
+            float3 spotLightWorldDirection = normalize(worldVoxelPosition - spotLightPosition);
 
-            float3 spotLight_currentRayPosition = worldVoxelPosition;
-            float3 spotLight_currentRayDirection = -spotLightWorldDirection;
-            float3 spotLightColorSample = spotLight.lightColor.rgb;
+            //perform a dot product, this will be used for multiple things later...
+            float spotLightDotProduct = dot(spotLightWorldDirection, spotLight.lightDirection);
 
-            //------------------------------ DIRECT LIGHT ------------------------------
-            //------------------------------ DIRECT LIGHT ------------------------------
-            //------------------------------ DIRECT LIGHT ------------------------------
-
-            bool spotLight_isOccluded = false;
-
-            iterationIndex = 0;
-
-            //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
-            while (distance(spotLight_currentRayPosition, spotLight.lightPosition) > 0.5f && iterationIndex < MAX_LOOP_ITERATIONS)
+            //[OPTIMIZATION]
+            //If we are somewhere in front of where the light is pointing then lets shade it.
+            //Otherwise if we aren't, don't bother. Saves us a little computational power.
+            if (spotLightDotProduct > 0.0)
             {
-                if (PositionInVolumeBounds(spotLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
-                    break;
+                //compute the attenuation factor for the spot light
+                float distanceToSpotLight = distance(worldVoxelPosition, spotLightPosition);
+                float spotLightDistanceSample = CalculateAttenuation(distanceToSpotLight);
 
-                //keep stepping the ray in world space
-                //spotLight_currentRayPosition += spotLight_currentRayDirection / length(VolumeResolution);
-                spotLight_currentRayPosition += spotLight_currentRayDirection * singleVoxelSize;
+                //calculate the cosine of the angle corresponding to the spot light's cone angle
+                float cosConeAngle = cos(radians(spotLight.lightAngle / 2.0));
 
-                if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
+                //calculate the spot light influence (0.0 to 1.0) based on the angle between the light direction and the spotlight direction
+                float spotLightAngle = saturate((dot(spotLightWorldDirection, spotLight.lightDirection) - cosConeAngle) / (1.0 - cosConeAngle));
+
+                //calculate the spot light range influence
+                float spotLightRange = saturate(1.0 - (distanceToSpotLight / spotLight.lightRange));
+
+                //our ray marching parameters
+                float3 spotLight_currentRayPosition = worldVoxelPosition;
+                float3 spotLight_currentRayDirection = -spotLightWorldDirection;
+
+                //get the primary light color (this already factors in the intensity of the light). 
+                //this will also be modified with additional light shading later.
+                float3 spotLightColorSample = spotLight.lightColor.rgb;
+
+                //gets set by the while loop later on to determine if the light is occluded at the current voxel.
+                bool spotLight_isOccluded = false;
+
+                //reset so we can keep track of the amount of times we iterate through a loop.
+                iterationIndex = 0;
+
+                //Here we will keep marching our ray until we...
+                // - hit an opaque voxel.
+                // - go out of the volume bounds.
+                // - hit the max amount of iterations
+                //NOTE: This is the most expensive operation
+                while (distance(spotLight_currentRayPosition, spotLightPosition) > minVoxelSize && iterationIndex < MAX_LOOP_ITERATIONS)
                 {
-                    float3 spotLight_scaledRayPosition = ((spotLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
-                    float spotLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, spotLight_scaledRayPosition).a;
-                    //float spotLight_sceneOcclusionSample = SceneAlbedo[spotLight_scaledRayPosition * VolumeResolution].a;
-
-                    if (spotLight_sceneOcclusionSample > 0.0)
-                    {
-                        spotLight_isOccluded = true;
+                    //if the ray goes out of bounds, stop the loop
+                    if (PositionInVolumeBounds(spotLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
                         break;
+
+                    //keep stepping the ray in world space
+                    spotLight_currentRayPosition += spotLight_currentRayDirection * singleVoxelSize;
+
+                    //do a "shadow ray bias" so we can avoid a false occlusion bias hitting potentially the current pixel we originated from.
+                    if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
+                    {
+                        //normalize the ray from world space, to simple local 3D texture coordinates.
+                        float3 spotLight_scaledRayPosition = ((spotLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
+
+                        //sample the scene albedo buffer's alpha channel only for occlusion checking.
+                        //float spotLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, spotLight_scaledRayPosition).a;
+                        float spotLight_sceneOcclusionSample = SceneAlbedo[spotLight_scaledRayPosition * VolumeResolution].a;
+
+                        //if the alpha value is not zero (opaque) then we have hit a surface.
+                        if (spotLight_sceneOcclusionSample > 0.0)
+                        {
+                            spotLight_isOccluded = true; //we are occluded, so we don't shade the surface
+                            break; //stop the loop
+                        }
                     }
+
+                    //increment the amount of times this loop runs
+                    iterationIndex++;
                 }
 
-                iterationIndex++;
-            }
+                //if the current surface we are on is not occluded from the current light source, shade it.
+                if (spotLight_isOccluded == false)
+                {
+                    spotLightColorSample *= spotLightDistanceSample * spotLightAngle * spotLightRange; //apply attenuation/angle/range
+                    spotLightColorSample *= max(0.0f, dot(sceneNormal, spotLight_currentRayDirection)); //perform NdotL
+                    spotLightColorSample /= 1.0 / SpotLights.Length; //correction for random light picking (increases intensity to compensate when there are more light sources in the scene).
 
-            if (spotLight_isOccluded == false)
-            {
-                finalColor.rgb += spotLightColorSample * spotLightDistanceSample * spotLightAngle * spotLightRange;
+                    finalColor.rgb += spotLightColorSample;
+                }
             }
         }
     #endif
@@ -267,57 +301,93 @@ void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
     //|||||||||||||||||||||||||||||||||||| POINT LIGHTS ||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||| POINT LIGHTS ||||||||||||||||||||||||||||||||||||
     #if defined (POINT_LIGHTS)
-        for (uint z = 0; z < PointLights.Length; z++)
+        if (PointLights.Length > 0) //If there are point lights that exist
         {
-            LightPoint pointLight = PointLights[z];
+            //get a random float value [0..1] and scale it to the size of the point lights array.
+            //this will allow us to randomly pick a light from the array.
+            float randomPointLightIndexNoise = GenerateRandomFloat(voxelPosition.xyz * VolumeResolution);
+            uint randomPointLightIndex = uint(randomPointLightIndexNoise * PointLights.Length);
 
-            float distanceToPointLight = distance(worldVoxelPosition, pointLight.lightPosition);
-            
-            float3 pointLightColorSample = pointLight.lightColor.rgb;
+            //the main light object we have selected
+            LightPoint pointLight = PointLights[randomPointLightIndex];
 
+            //get the light position, we are going to do some modifcations to it...
+            float3 pointLightPosition = pointLight.lightPosition;
+
+            //compute soft shadows by essentially jittering the light position with noise, and the given shadow radius.
+            float pointLightPositionNoiseX = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * pointLight.shadowRadius;
+            float pointLightPositionNoiseY = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * pointLight.shadowRadius;
+            float pointLightPositionNoiseZ = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * pointLight.shadowRadius;
+            float3 pointLightPositionNoise = float3(pointLightPositionNoiseX, pointLightPositionNoiseY, pointLightPositionNoiseZ);
+            pointLightPosition += pointLightPositionNoise;
+
+            //compute the attenuation factor for the point light
+            float distanceToPointLight = distance(worldVoxelPosition, pointLightPosition);
             float pointLightDistanceSample = CalculateAttenuation(distanceToPointLight);
+            //float pointLightRange = saturate(1.0 - (distanceToPointLight / pointLight.lightRange));
 
-            float pointLightRange = saturate(1.0 - (distanceToPointLight / pointLight.lightRange));
+            //compute the current direction to the point light position
+            float3 pointLightWorldDirection = normalize(worldVoxelPosition - pointLightPosition);
 
-            float3 pointLightWorldDirection = normalize(worldVoxelPosition - pointLight.lightPosition);
-
+            //our ray marching parameters
             float3 pointLight_currentRayPosition = worldVoxelPosition;
             float3 pointLight_currentRayDirection = -pointLightWorldDirection;
 
+            //get the primary light color (this already factors in the intensity of the light). 
+            //this will also be modified with additional light shading later.
+            float3 pointLightColorSample = pointLight.lightColor.rgb;
+
+            //gets set by the while loop later on to determine if the light is occluded at the current voxel.
             bool pointLight_isOccluded = false;
 
+            //reset so we can keep track of the amount of times we iterate through a loop.
             iterationIndex = 0;
 
-            //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
-            while (distance(pointLight_currentRayPosition, pointLight.lightPosition) > 0.5f && iterationIndex < MAX_LOOP_ITERATIONS)
+            //Here we will keep marching our ray until we...
+            // - hit an opaque voxel.
+            // - go out of the volume bounds.
+            // - hit the max amount of iterations
+            //NOTE: This is the most expensive operation
+            while (distance(pointLight_currentRayPosition, pointLightPosition) > minVoxelSize && iterationIndex < MAX_LOOP_ITERATIONS)
             {
+                //if the ray goes out of bounds, stop the loop
                 if (PositionInVolumeBounds(pointLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
                     break;
 
                 //keep stepping the ray in world space
-                //pointLight_currentRayPosition += pointLight_currentRayDirection / length(VolumeResolution);
                 pointLight_currentRayPosition += pointLight_currentRayDirection * singleVoxelSize;
 
+                //do a "shadow ray bias" so we can avoid a false occlusion bias hitting potentially the current pixel we originated from.
                 if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
                 {
+                    //normalize the ray from world space, to simple local 3D texture coordinates.
                     float3 pointLight_scaledRayPosition = ((pointLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
-                    float pointLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, pointLight_scaledRayPosition).a;
-                    //float pointLight_sceneOcclusionSample = SceneAlbedo[pointLight_scaledRayPosition * VolumeResolution].a;
 
+                    //sample the scene albedo buffer's alpha channel only for occlusion checking.
+                    //float pointLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, pointLight_scaledRayPosition).a;
+                    float pointLight_sceneOcclusionSample = SceneAlbedo[pointLight_scaledRayPosition * VolumeResolution].a;
+
+                    //if the alpha value is not zero (opaque) then we have hit a surface.
                     if (pointLight_sceneOcclusionSample > 0.0)
                     {
-                        pointLight_isOccluded = true;
-                        break;
+                        pointLight_isOccluded = true; //we are occluded, so we don't shade the surface
+                        break; //stop the loop
                     }
                 }
 
+                //increment the amount of times this loop runs
                 iterationIndex++;
             }
 
+            //if the current surface we are on is not occluded from the current light source, shade it.
             if (pointLight_isOccluded == false)
             {
-                finalColor.rgb += pointLightColorSample * pointLightDistanceSample;
-                //finalColor.rgb += pointLightColorSample * pointLightDistanceSample * pointLightRange;
+                pointLightColorSample *= pointLightDistanceSample; //apply attenuation
+                //pointLightColorSample *= pointLightDistanceSample * pointLightRange; //apply attenuation/range
+                pointLightColorSample *= max(0.0f, dot(sceneNormal, pointLight_currentRayDirection));  //perform NdotL
+                pointLightColorSample /= 1.0 / PointLights.Length; //correction for random light picking (increases intensity to compensate when there are more light sources in the scene).
+
+                finalColor.rgb += pointLightColorSample;
             }
         }
     #endif
@@ -326,92 +396,110 @@ void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
     //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
     //|||||||||||||||||||||||||||||||||||| AREA LIGHTS ||||||||||||||||||||||||||||||||||||
     #if defined (AREA_LIGHTS)
-        for (uint w = 0; w < AreaLights.Length; w++)
+        if(AreaLights.Length > 0) //If there are area lights that exist
         {
-            LightArea areaLight = AreaLights[w];
-            float2 areaLightSize = areaLight.lightSize;
-            float3 areaLightForward = areaLight.lightForwardDirection;
-            float3 areaLightRight = areaLight.lightRightDirection;
-            float3 areaLightUp = areaLight.lightUpwardDirection;
+            //get a random float value [0..1] and scale it to the size of the area lights array.
+            //this will allow us to randomly pick a light from the array.
+            float randomAreaLightIndexNoise = GenerateRandomFloat(voxelPosition.xyz * VolumeResolution);
+            uint randomAreaLightIndex = uint(randomAreaLightIndexNoise * AreaLights.Length);
 
-            int areaWidthSamples = areaLightSize.x / min(min(singleVoxelSize.x, singleVoxelSize.y), singleVoxelSize.z);
-            int areaHeightSamples = areaLightSize.y / min(min(singleVoxelSize.x, singleVoxelSize.y), singleVoxelSize.z);
+            //the main light object we have selected
+            LightArea areaLight = AreaLights[randomAreaLightIndex];
 
-            float3 areaLightColorSample = areaLight.lightColor.rgb;
+            //get the light position, we are going to do some modifcations to it...
+            float3 areaLightPosition = areaLight.lightPosition;
 
-            float3 accumulatedAreaLightColor = float3(0, 0, 0);
+            //compute soft shadows by essentially jittering the light position with noise, and the given area light size.
+            float areaLightPositionNoiseX = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * (areaLight.lightSize.x * 0.5f);
+            float areaLightPositionNoiseY = (GenerateRandomFloat(voxelPosition.xyz * VolumeResolution) * 2.0f - 1.0f) * (areaLight.lightSize.y * 0.5f);
+            areaLightPosition += areaLight.lightRightDirection * areaLightPositionNoiseX;
+            areaLightPosition += areaLight.lightUpwardDirection * areaLightPositionNoiseY;
 
-            for (int x = 0; x < areaWidthSamples; x++)
+            //compute the current direction to the area light position
+            float3 areaLightWorldDirection = normalize(worldVoxelPosition - areaLightPosition);
+
+            //perform a dot product, this will be used for multiple things later...
+            float areaLightDotProduct = dot(areaLightWorldDirection, areaLight.lightForwardDirection);
+
+            //[OPTIMIZATION]
+            //If we are somewhere in front of where the light is pointing then lets shade it.
+            //Otherwise if we aren't, don't bother. Saves us a little computational power.
+            if (areaLightDotProduct > 0.0)
             {
-                for (int y = 0; y < areaHeightSamples; y++)
+                //compute the attenuation factor for the area light
+                float distanceToAreaLight = distance(worldVoxelPosition, areaLightPosition);
+                float areaLightDistanceSample = CalculateAttenuation(distanceToAreaLight);
+
+                //our ray marching parameters
+                float3 areaLight_currentRayPosition = worldVoxelPosition;
+                float3 areaLight_currentRayDirection = -areaLightWorldDirection;
+
+                //get the primary light color (this already factors in the intensity of the light). 
+                //this will also be modified with additional light shading later.
+                float3 areaLightColorSample = areaLight.lightColor.rgb;
+
+                //gets set by the while loop later on to determine if the light is occluded at the current voxel.
+                bool areaLight_isOccluded = false;
+
+                //reset so we can keep track of the amount of times we iterate through a loop.
+                iterationIndex = 0;
+
+                //Here we will keep marching our ray until we...
+                // - hit an opaque voxel.
+                // - go out of the volume bounds.
+                // - hit the max amount of iterations
+                //NOTE: This is the most expensive operation
+                while (distance(areaLight_currentRayPosition, areaLightPosition) > minVoxelSize && iterationIndex < MAX_LOOP_ITERATIONS)
                 {
-                    float3 areaLightSamplePosition = areaLight.lightPosition;
-                    areaLightSamplePosition += ((areaLightRight * (x - (areaWidthSamples / 2)))) * singleVoxelSize;
-                    areaLightSamplePosition += ((areaLightUp * (y - (areaHeightSamples / 2)))) * singleVoxelSize;
+                    //if the ray goes out of bounds, stop the loop
+                    if (PositionInVolumeBounds(areaLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
+                        break;
 
-                    float distanceToAreaLight = distance(worldVoxelPosition, areaLightSamplePosition);
-                    float areaLightDistanceSample = CalculateAttenuation(distanceToAreaLight);
-                    float3 areaLightWorldDirection = normalize(worldVoxelPosition - areaLightSamplePosition);
+                    //keep stepping the ray in world space
+                    areaLight_currentRayPosition += areaLight_currentRayDirection * singleVoxelSize;
 
-                    float3 areaLight_currentRayPosition = worldVoxelPosition;
-                    float3 areaLight_currentRayDirection = -areaLightWorldDirection;
-
-                    //------------------------------ DIRECT LIGHT ------------------------------
-                    //------------------------------ DIRECT LIGHT ------------------------------
-                    //------------------------------ DIRECT LIGHT ------------------------------
-
-                    float areaLightDotProduct = dot(areaLightWorldDirection, areaLightForward);
-
-                    if (areaLightDotProduct > 0.0)
+                    //do a "shadow ray bias" so we can avoid a false occlusion bias hitting potentially the current pixel we originated from.
+                    if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
                     {
-                        bool areaLight_isOccluded = false;
+                        //normalize the ray from world space, to simple local 3D texture coordinates.
+                        float3 areaLight_scaledRayPosition = ((areaLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
 
-                        iterationIndex = 0;
+                        //sample the scene albedo buffer's alpha channel only for occlusion checking.
+                        //float areaLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, areaLight_scaledRayPosition).a;
+                        float areaLight_sceneOcclusionSample = SceneAlbedo[areaLight_scaledRayPosition * VolumeResolution].a;
 
-                        //NOTE: This is the most expensive operation, marching our ray until we hit an opaque voxel.
-                        while (distance(areaLight_currentRayPosition, areaLightSamplePosition) > 0.5f && iterationIndex < MAX_LOOP_ITERATIONS)
+                        //if the alpha value is not zero (opaque) then we have hit a surface.
+                        if (areaLight_sceneOcclusionSample > 0.0)
                         {
-                            if (PositionInVolumeBounds(areaLight_currentRayPosition.xyz, VolumePosition, VolumeSize) == false)
-                                break;
-
-                            //keep stepping the ray in world space
-                            areaLight_currentRayPosition += areaLight_currentRayDirection * singleVoxelSize;
-
-                            if (iterationIndex >= SURFACE_DIRECT_OCCLUSION_SKIP_ITERATION)
-                            {
-                                float3 areaLight_scaledRayPosition = ((areaLight_currentRayPosition + volumeHalfSize) - VolumePosition) / VolumeSize;
-                                float areaLight_sceneOcclusionSample = TEX3D_SHARP(SceneAlbedo, areaLight_scaledRayPosition).a;
-                                //float areaLight_sceneOcclusionSample = SceneAlbedo[areaLight_scaledRayPosition * VolumeResolution].a;
-
-                                if (areaLight_sceneOcclusionSample > 0.0)
-                                {
-                                    areaLight_isOccluded = true;
-                                    break;
-                                }
-                            }
-
-                            iterationIndex++;
-                        }
-
-                        if (areaLight_isOccluded == false)
-                        {
-                            //accumulatedAreaLightColor += areaLightColorSample * areaLightDistanceSample;
-                            accumulatedAreaLightColor += areaLightColorSample * areaLightDistanceSample * areaLightDotProduct;
+                            areaLight_isOccluded = true; //we are occluded, so we don't shade the surface
+                            break; //stop the loop
                         }
                     }
+
+                    //increment the amount of times this loop runs
+                    iterationIndex++;
+                }
+
+                //if the current surface we are on is not occluded from the current light source, shade it.
+                if (areaLight_isOccluded == false)
+                {
+                    areaLightColorSample *= areaLightDistanceSample * areaLightDotProduct; //apply attenuation/angle
+                    areaLightColorSample *= max(0.0f, dot(sceneNormal, areaLight_currentRayDirection)); //perform NdotL
+                    areaLightColorSample /= 1.0 / AreaLights.Length; //correction for random light picking (increases intensity to compensate when there are more light sources in the scene).
+
+                    finalColor.rgb += areaLightColorSample;
                 }
             }
-
-            accumulatedAreaLightColor /= areaWidthSamples;
-            accumulatedAreaLightColor /= areaHeightSamples;
-
-            finalColor.rgb += accumulatedAreaLightColor;
         }
     #endif
 
-    finalColor.rgb = max(0.0f, finalColor.rgb);
-    finalColor.rgb *= sceneAlbedo.rgb;
-    //finalColor.rgb += SceneEmissive[id.xyz].rgb;
+    //multiply accumulated light with the scene material colors
+    finalColor.rgb *= sceneAlbedo.rgb * AlbedoBoost;
+    //finalColor.rgb *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
 
-    Write[id.xyz] = finalColor;
+    //add emissive direct lighting
+    finalColor.rgb += SceneEmissive[id.xyz].rgb;
+
+    //accumulate samples into the render target
+    Write[id.xyz] = float4(Write[id.xyz].rgb + (finalColor / MaxDirectSamples), 1);
 }

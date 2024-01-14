@@ -32,6 +32,14 @@ float3 SampleSphereUniform(float u1, float u2)
     return SphericalToCartesian(phi, cosTheta);
 }
 
+float3 SampleHemisphereUniform(float u1, float u2)
+{
+    float phi = UNITY_TWO_PI * u2;
+    float cosTheta = 1.0 - u1;
+
+    return SphericalToCartesian(phi, cosTheta);
+}
+
 // Cosine-weighted sampling without the tangent frame.
 // Ref: http://www.amietia.com/lambertnotangent.html
 float3 SampleHemisphereCosine(float u1, float u2, float3 normal)

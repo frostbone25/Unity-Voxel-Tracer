@@ -47,6 +47,11 @@ float3 VolumeResolution;
 
 int MaxBounceSamples;
 
+float IndirectIntensity;
+float AlbedoBoost;
+
+RWStructuredBuffer<int> DummyComputeBuffer;
+
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceBounceLight |||||||||||||||||||||||||||||
@@ -107,6 +112,10 @@ void ComputeShader_TraceSurfaceBounceLight(uint3 id : SV_DispatchThreadID)
 
             if (bounceLight_sceneSample.a > 0.0)
             {
+                bounceLight_sceneSample.rgb *= max(0.0f, dot(sceneNormal, vector_bounceRayDirection));
+                bounceLight_sceneSample.rgb *= IndirectIntensity;
+                bounceLight_sceneSample.rgb *= sceneAlbedo.rgb * AlbedoBoost;
+
                 finalColor.rgb += bounceLight_sceneSample.rgb;
                 break;
             }
@@ -116,7 +125,6 @@ void ComputeShader_TraceSurfaceBounceLight(uint3 id : SV_DispatchThreadID)
     }
 
     finalColor = max(0.0f, finalColor);
-    finalColor.rgb *= sceneAlbedo.rgb;
 
     Write[id.xyz] += finalColor * (1.0f / MaxBounceSamples);
 }

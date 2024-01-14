@@ -3659,7 +3659,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1377972530
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3678,14 +3678,17 @@ MonoBehaviour:
   enableEnvironmentLighting: 0
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
+  directSurfaceSamples: 128
   bounceSurfaceSamples: 512
   bounceVolumetricSamples: 1024
-  bounces: 4
+  bounces: 8
   environmentSurfaceSamples: 64
   environmentVolumetricSamples: 64
   normalOrientedHemisphereSampling: 1
-  GPU_Readback_Limit: 8
-  showDetailedProgress: 1
+  albedoBoost: 1
+  indirectIntensity: 1
+  enableGPU_Readback_Limit: 1
+  GPU_Readback_Limit: 1
   volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 2
   previewBounds: 1
