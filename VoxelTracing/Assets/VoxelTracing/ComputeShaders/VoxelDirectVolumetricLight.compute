@@ -36,8 +36,6 @@
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 
 Texture3D<float4> SceneAlbedo;
-Texture3D<float4> SceneNormal;
-Texture3D<float4> SceneEmissive;
 
 RWTexture3D<float4> Write;
 

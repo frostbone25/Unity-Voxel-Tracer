@@ -36044,20 +36044,24 @@ MonoBehaviour:
   enableEnvironmentLighting: 1
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
+  volumetricTracing: 1
   directSurfaceSamples: 1024
   directVolumetricSamples: 128
+  environmentSurfaceSamples: 1024
+  environmentVolumetricSamples: 128
   bounceSurfaceSamples: 1024
   bounceVolumetricSamples: 1024
-  environmentSurfaceSamples: 8192
-  environmentVolumetricSamples: 64
   bounces: 8
   normalOrientedHemisphereSampling: 1
   albedoBoost: 1
   indirectIntensity: 1
+  environmentIntensity: 1
+  emissiveIntensity: 1
   enableGPU_Readback_Limit: 1
   GPU_Readback_Limit: 2
-  volumetricDirectGaussianSamples: 0
+  volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 4
+  volumetricEnvironmentGaussianSamples: 4
   previewBounds: 1
 --- !u!4 &1425651869
 Transform:

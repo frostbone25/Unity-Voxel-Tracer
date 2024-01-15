@@ -56,6 +56,7 @@ float3 VolumeResolution;
 int MaxDirectSamples;
 
 float AlbedoBoost;
+float EmissiveIntensity;
 
 RWStructuredBuffer<int> DummyComputeBuffer;
 
@@ -494,11 +495,11 @@ void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
     #endif
 
     //multiply accumulated light with the scene material colors
-    finalColor.rgb *= sceneAlbedo.rgb * AlbedoBoost;
-    //finalColor.rgb *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
+    //finalColor.rgb *= sceneAlbedo.rgb * AlbedoBoost;
+    finalColor.rgb *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
 
     //add emissive direct lighting
-    finalColor.rgb += SceneEmissive[id.xyz].rgb;
+    finalColor.rgb += SceneEmissive[id.xyz].rgb * EmissiveIntensity;
 
     //accumulate samples into the render target
     Write[id.xyz] = float4(Write[id.xyz].rgb + (finalColor / MaxDirectSamples), 1);

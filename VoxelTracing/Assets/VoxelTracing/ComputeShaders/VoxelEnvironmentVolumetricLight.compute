@@ -25,7 +25,7 @@
 //|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
 
-#pragma multi_compile_local _ NORMAL_ORIENTED_HEMISPHERE_SAMPLING
+//#pragma multi_compile_local _ NORMAL_ORIENTED_HEMISPHERE_SAMPLING
 
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
@@ -34,7 +34,7 @@
 TextureCube<float4> EnvironmentMap;
 
 Texture3D<float4> SceneAlbedo;
-Texture3D<float4> SceneNormal;
+//Texture3D<float4> SceneNormal;
 
 RWTexture3D<float4> Write;
 
@@ -44,18 +44,17 @@ float3 VolumeResolution;
 
 int MaxEnvironmentSamples;
 
-float AlbedoBoost;
 float EnvironmentIntensity;
 
 RWStructuredBuffer<int> DummyComputeBuffer;
 
-//||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceEnvironmentLight |||||||||||||||||||||||||||||
-//||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceEnvironmentLight |||||||||||||||||||||||||||||
-//||||||||||||||||||||||||||||| ComputeShader_TraceSurfaceEnvironmentLight |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceVolumetricEnvironmentLight |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceVolumetricEnvironmentLight |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_TraceVolumetricEnvironmentLight |||||||||||||||||||||||||||||
 
-#pragma kernel ComputeShader_TraceSurfaceEnvironmentLight
+#pragma kernel ComputeShader_TraceVolumetricEnvironmentLight
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
-void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
+void ComputeShader_TraceVolumetricEnvironmentLight(uint3 id : SV_DispatchThreadID)
 {
     float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
     voxelPosition /= VolumeResolution.xyz;
@@ -68,17 +67,17 @@ void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
     float4 sceneAlbedo = SceneAlbedo[id.xyz];
 
     //[OPTIMIZATION]
-    //Since we are tracing "surface light", we don't care about transparent voxels, only opaque ones matter.
-    //So if the current voxel is transparent, then we stop here.
-    if (!(sceneAlbedo.a > 0.0)) 
+    //Since we are tracing "volumetric light", we don't care about opaque voxels, only transparent ones matter.
+    //So if the current voxel is opaque, then we stop here.
+    if (sceneAlbedo.a > 0.0) 
     {
-        Write[id.xyz] = float4(0, 0, 0, 0);
+        Write[id.xyz] = float4(0, 0, 0, 1);
         return;
     }
 
     //float4 sceneNormal = TEX3D_SHARP(SceneNormal, voxelPosition);
-    float4 sceneNormal = SceneNormal[id.xyz];
-    sceneNormal = sceneNormal * 2.0f - 1.0f;
+    //float4 sceneNormal = SceneNormal[id.xyz];
+    //sceneNormal = sceneNormal * 2.0f - 1.0f;
 
     //trace lights
     float4 finalColor = float4(0, 0, 0, 0);
@@ -115,10 +114,6 @@ void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
             if (PositionInVolumeBounds(vector_environmentRayPosition.xyz, VolumePosition, VolumeSize) == false)
             {
                 float3 environmentLightSample = TEXCUBE_SHARP(EnvironmentMap, vector_environmentRayDirection).rgb * EnvironmentIntensity;
-                float localNdotL = max(0.0, dot(sceneNormal, vector_environmentRayDirection));
-                environmentLightSample *= localNdotL;
-                //environmentLightSample *= sceneAlbedo.rgb * AlbedoBoost;
-                environmentLightSample *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
 
                 finalColor.rgb += environmentLightSample;
 

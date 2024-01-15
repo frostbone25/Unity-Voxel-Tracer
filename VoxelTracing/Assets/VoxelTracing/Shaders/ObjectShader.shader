@@ -26,6 +26,13 @@ Shader "Unlit/ObjectShader"
         [MainColor] _Color("Color", Color) = (1,1,1,1)
         _MainTex ("Albedo", 2D) = "white" {}
 
+        [Header(Voxel Lightmap)]
+        _VolumeTexture("Volume Texture", 3D) = "white" {}
+        _VolumePos("Volume World Position", Vector) = (0, 0, 0, 0)
+        _VolumeSize("Volume World Size", Vector) = (0, 0, 0, 0)
+        _MipLevel("Mip Level", Float) = 0
+        _NormalOffset("Normal Offset", Float) = 0
+
         [Header(Comparison)]
         [Toggle(COMPARE_TO_LIGHTMAP)] _CompareToLightmap("Compare To Lightmap", Float) = 1
     }
@@ -89,6 +96,12 @@ Shader "Unlit/ObjectShader"
             sampler2D _MainTex;
             float4 _MainTex_ST;         //(X = Tiling X | Y = Tiling Y | Z = Offset X | W = Offset Y)
             float4 _MainTex_TexelSize;  //(X = 1 / Width | Y = 1 / Height | Z = Width | W = Height)
+
+            float _NormalOffset;
+            float _MipLevel;
+            float4 _VolumePos;
+            float4 _VolumeSize;
+            sampler3D _VolumeTexture;
 
             struct meshData
             {
@@ -182,6 +195,13 @@ Shader "Unlit/ObjectShader"
                     #if defined (COMPARE_TO_LIGHTMAP)
                         finalColor += indirectLightmap;
                     #endif
+                #endif
+
+                #if !defined(COMPARE_TO_LIGHTMAP)
+                    float3 normalizedVolumeCoordinates = (((vector_worldPosition + (vector_normalDirection *_NormalOffset)) + (_VolumeSize / 2.0f)) - _VolumePos) / _VolumeSize;
+                    float4 volumetricLightmap = tex3Dlod(_VolumeTexture, float4(normalizedVolumeCoordinates.xyz, _MipLevel));
+
+                    finalColor.rgb += volumetricLightmap.rgb;
                 #endif
 
                 //||||||||||||||||||||||||||||||| ALBEDO |||||||||||||||||||||||||||||||

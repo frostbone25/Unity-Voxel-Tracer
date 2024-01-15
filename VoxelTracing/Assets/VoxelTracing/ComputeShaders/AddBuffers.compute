@@ -28,6 +28,8 @@ void ComputeShader_AddBuffers(uint3 id : SV_DispatchThreadID)
 
     float4 addBufferA = TEX3D_SHARP(AddBufferA, voxelPosition);
     float4 addBufferB = TEX3D_SHARP(AddBufferB, voxelPosition);
+    float4 addedBuffers = addBufferA + addBufferB;
+    addedBuffers.a = clamp(addedBuffers.a, 0.0f, 1.0f);
 
-    Write[id.xyz] = addBufferA + addBufferB;
+    Write[id.xyz] = addedBuffers;
 }

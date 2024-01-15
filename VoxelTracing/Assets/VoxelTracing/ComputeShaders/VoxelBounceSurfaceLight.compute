@@ -31,11 +31,7 @@
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 
-Texture3D<float4> BounceLightSurface;
-Texture3D<float4> BounceLightVolume;
 Texture3D<float4> DirectLightSurface;
-Texture3D<float4> DirectLightVolume;
-
 Texture3D<float4> SceneAlbedo;
 Texture3D<float4> SceneNormal;
 
@@ -114,7 +110,8 @@ void ComputeShader_TraceSurfaceBounceLight(uint3 id : SV_DispatchThreadID)
             {
                 bounceLight_sceneSample.rgb *= max(0.0f, dot(sceneNormal, vector_bounceRayDirection));
                 bounceLight_sceneSample.rgb *= IndirectIntensity;
-                bounceLight_sceneSample.rgb *= sceneAlbedo.rgb * AlbedoBoost;
+                //bounceLight_sceneSample.rgb *= sceneAlbedo.rgb * AlbedoBoost;
+                bounceLight_sceneSample.rgb *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
 
                 finalColor.rgb += bounceLight_sceneSample.rgb;
                 break;
