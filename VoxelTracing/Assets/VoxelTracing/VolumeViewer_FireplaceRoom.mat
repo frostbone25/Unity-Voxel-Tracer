@@ -61,6 +61,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats:
     - RAYMARCH_STEPS: 512
+    - _Brightness: 1
     - _BumpScale: 1
     - _Cutoff: 0.5
     - _Density: 1
@@ -76,7 +77,7 @@ Material:
     - _Parallax: 0.02
     - _RaymarchJitterStrength: 1
     - _RaymarchOpaque: 1
-    - _RaymarchStepSize: 75
+    - _RaymarchStepSize: 70
     - _RaymarchSteps: 2048
     - _Seed: 0
     - _SmoothnessTextureChannel: 0

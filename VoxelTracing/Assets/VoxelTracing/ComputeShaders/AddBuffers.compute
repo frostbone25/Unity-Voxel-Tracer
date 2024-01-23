@@ -13,8 +13,6 @@ Texture3D<float4> AddBufferB;
 
 RWTexture3D<float4> Write;
 
-float3 VolumeResolution;
-
 //||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
 //||||||||||||||||||||||||||||| ComputeShader_AddBuffers |||||||||||||||||||||||||||||
@@ -23,13 +21,10 @@ float3 VolumeResolution;
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_AddBuffers(uint3 id : SV_DispatchThreadID)
 {
-    float3 voxelPosition = id.xyz + float3(0.5, 0.5, 0.5);
-    voxelPosition /= VolumeResolution.xyz;
-
-    float4 addBufferA = TEX3D_SHARP(AddBufferA, voxelPosition);
-    float4 addBufferB = TEX3D_SHARP(AddBufferB, voxelPosition);
+    float4 addBufferA = AddBufferA[id.xyz];
+    float4 addBufferB = AddBufferB[id.xyz];
     float4 addedBuffers = addBufferA + addBufferB;
-    addedBuffers.a = clamp(addedBuffers.a, 0.0f, 1.0f);
+    addedBuffers.a = saturate(addedBuffers.a);
 
     Write[id.xyz] = addedBuffers;
 }

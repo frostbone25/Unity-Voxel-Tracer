@@ -1,0 +1,47 @@
+#define THREAD_GROUP_SIZE_X 8
+#define THREAD_GROUP_SIZE_Y 8
+#define THREAD_GROUP_SIZE_Z 8
+
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+
+RWTexture2D<float4> AlbedoBuffer;
+RWTexture2D<float4> EmissiveBuffer;
+
+RWTexture2D<float4> Write;
+
+//||||||||||||||||||||||||||||| ComputeShader_DataPacking |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_DataPacking |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_DataPacking |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_DataPacking
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+void ComputeShader_DataPacking(uint3 id : SV_DispatchThreadID)
+{
+    float4 albedoColor = AlbedoBuffer[id.xy];
+    float4 emissiveColor = EmissiveBuffer[id.xy];
+
+    float4 packedColor = float4(0, 0, 0, 0);
+
+    //really low precison, RGB colors can represent up to 45 colors (64 values max)
+    //uint packedAlbedoR = albedoColor.r * 15; //4 bit 0 - 15
+    //uint packedAlbedoG = albedoColor.g * 15; //4 bit 0 - 15
+    //uint packedAlbedoB = albedoColor.b * 15; //4 bit 0 - 15
+    //uint packedAlbedoA = albedoColor.a * 15; //4 bit 0 - 15
+
+    //classic 8 bit, RGB colors can represent up to 765 colors (1024 values max)
+    uint packedAlbedoR = albedoColor.r * 255; //8 bit 0 - 255
+    uint packedAlbedoG = albedoColor.g * 255; //8 bit 0 - 255
+    uint packedAlbedoB = albedoColor.b * 255; //8 bit 0 - 255
+    uint packedAlbedoA = albedoColor.a * 255; //8 bit 0 - 255
+
+    float4 emissiveColorLength = length(emissiveColor);
+    float4 normalizedEmissiveColor = emissiveColor / emissiveColorLength;
+
+    uint packedNormalizedEmissiveColorR = normalizedEmissiveColor.r * 255; //8 bit 0 - 255
+    uint packedNormalizedEmissiveColorG = normalizedEmissiveColor.g * 255; //8 bit 0 - 255
+    uint packedNormalizedEmissiveColorB = normalizedEmissiveColor.b * 255; //8 bit 0 - 255
+
+    Write[id.xy] = packedColor;
+}

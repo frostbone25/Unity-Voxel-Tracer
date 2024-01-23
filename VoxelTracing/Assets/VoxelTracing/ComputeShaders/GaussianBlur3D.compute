@@ -2,6 +2,11 @@
 #define THREAD_GROUP_SIZE_Y 8
 #define THREAD_GROUP_SIZE_Z 8
 
+//https://github.com/TwoTailsGames/Unity-Built-in-Shaders/blob/master/CGIncludes/UnityCG.cginc
+//From UnityCG.cginc
+#define UNITY_PI            3.14159265359f
+#define UNITY_TWO_PI        6.28318530718f
+
 #define pow2(x) (x * x)
 
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
@@ -13,20 +18,20 @@ float3 BlurDirection;
 float3 VolumeResolution;
 
 RWTexture3D<float4> Write;
+
 Texture3D<float4> Read;
 
 SamplerState _PointClamp;
 SamplerState _LinearClamp;
 
-float gaussian(float2 i) 
+float CalculateGaussianWeight(float2 i) 
 {
-    float pi = atan(1.0) * 4.0;
     float sigma = float(BlurSamples) * 0.25;
 
-    return 1.0 / (2.0 * pi * pow2(sigma)) * exp(-((pow2(i.x) + pow2(i.y)) / (2.0 * pow2(sigma))));
+    return 1.0 / (2.0 * UNITY_PI * pow2(sigma)) * exp(-((pow2(i.x) + pow2(i.y)) / (2.0 * pow2(sigma))));
 }
 
-float4 blur(float3 uv)
+float4 GaussianBlur(float3 uv)
 {
     float3 scale = float3(1, 1, 1) / VolumeResolution.xyz;
     float4 offset = float4(0, 0, 0, 0);
@@ -43,7 +48,7 @@ float4 blur(float3 uv)
         else if (BlurDirection.z > 0)
             offset = float4(0, 0, i, 0);
 
-        weight = gaussian(offset);
+        weight = CalculateGaussianWeight(offset);
 
         col += Read.SampleLevel(_LinearClamp, uv + scale * offset, 0) * weight;
 
@@ -61,10 +66,10 @@ float4 blur(float3 uv)
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void ComputeShader_GaussianBlur(uint3 id : SV_DispatchThreadID)
 {
-    float3 gl_FragCoords = id.xyz + float3(0.5, 0.5, 0.5);
-    gl_FragCoords.xyz /= VolumeResolution.xyz;
+    float3 position = id.xyz + float3(0.5, 0.5, 0.5);
+    position.xyz /= VolumeResolution.xyz;
 
-    float4 color = blur(gl_FragCoords);
+    float4 color = GaussianBlur(position);
 
     Write[id.xyz] = float4(color.rgb, 1);
 }

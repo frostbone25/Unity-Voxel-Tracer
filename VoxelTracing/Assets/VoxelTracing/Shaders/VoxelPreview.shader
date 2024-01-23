@@ -1,4 +1,4 @@
-﻿Shader "VoxelPreview"
+﻿Shader "Hidden/VoxelPreview"
 {
     Properties
     {

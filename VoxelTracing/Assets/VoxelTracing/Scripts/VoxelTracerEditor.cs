@@ -23,6 +23,9 @@ namespace UnityVoxelTracer
         SerializedProperty voxelName;
         SerializedProperty voxelSize;
         SerializedProperty voxelDensitySize;
+        SerializedProperty texelDensityPerUnit;
+        SerializedProperty minimumBufferResolution;
+        SerializedProperty onlyIncludeGIContributors;
 
         //Environment Options
         SerializedProperty enableEnvironmentLighting;
@@ -73,6 +76,9 @@ namespace UnityVoxelTracer
             voxelName = serializedObject.FindProperty("voxelName");
             voxelSize = serializedObject.FindProperty("voxelSize");
             voxelDensitySize = serializedObject.FindProperty("voxelDensitySize");
+            texelDensityPerUnit = serializedObject.FindProperty("texelDensityPerUnit");
+            minimumBufferResolution = serializedObject.FindProperty("minimumBufferResolution");
+            onlyIncludeGIContributors = serializedObject.FindProperty("onlyIncludeGIContributors");
 
             //Environment Options
             enableEnvironmentLighting = serializedObject.FindProperty("enableEnvironmentLighting");
@@ -149,6 +155,11 @@ namespace UnityVoxelTracer
             EditorGUILayout.PropertyField(voxelName);
             EditorGUILayout.PropertyField(voxelSize);
             EditorGUILayout.PropertyField(voxelDensitySize);
+
+            EditorGUILayout.PropertyField(texelDensityPerUnit);
+            EditorGUILayout.PropertyField(minimumBufferResolution);
+            EditorGUILayout.PropertyField(onlyIncludeGIContributors);
+
             EditorGUILayout.Space(guiSpace);
 
             //|||||||||||||||||||||||||||||||||||||||||| VOXEL TRACING OPTIONS ||||||||||||||||||||||||||||||||||||||||||
@@ -343,6 +354,15 @@ namespace UnityVoxelTracer
                 if (GUILayout.Button("Combine Volume Direct and Bounce Light"))
                     scriptObject.CombineVolumeLighting();
             }
+
+            //|||||||||||||||||||||||||||||||||||||||||| DEBUG ||||||||||||||||||||||||||||||||||||||||||
+            //|||||||||||||||||||||||||||||||||||||||||| DEBUG ||||||||||||||||||||||||||||||||||||||||||
+            //|||||||||||||||||||||||||||||||||||||||||| DEBUG ||||||||||||||||||||||||||||||||||||||||||
+
+            EditorGUILayout.LabelField("DEBUG", EditorStyles.whiteLargeLabel);
+
+            if (GUILayout.Button("Create Voxel Preview"))
+                scriptObject.CreateVoxelPreview();
 
             serializedObject.ApplyModifiedProperties();
         }

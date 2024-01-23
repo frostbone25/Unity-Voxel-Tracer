@@ -10,13 +10,27 @@ VoxelTracing/[Bb]uilds/
 VoxelTracing/[Ll]ogs/
 VoxelTracing/[Uu]ser[Ss]ettings/
 
-
-
 VoxelTracing/[Aa]ssets/unity-sdf-generator-main
 VoxelTracing/[Aa]ssets/unity-sdf-generator-main/
 
+VoxelTracing/[Aa]ssets/Filamented
+VoxelTracing/[Aa]ssets/Filamented/
+
+VoxelTracing/[Aa]ssets/Editor
+VoxelTracing/[Aa]ssets/Editor/
+
+VoxelTracing/[Aa]ssets/ObjectSSR
+VoxelTracing/[Aa]ssets/ObjectSSR/
+
+VoxelTracing/[Aa]ssets/Art/Unity
+VoxelTracing/[Aa]ssets/Art/Unity/
+
+VoxelTracing/[Aa]ssets/ScreenshotUtility
+VoxelTracing/[Aa]ssets/ScreenshotUtility/
+
 VoxelTracing/[Aa]ssets/VoxelTracing/Data
 VoxelTracing/[Aa]ssets/VoxelTracing/Data/
+VoxelTracing/Screenshots/
 
 
 

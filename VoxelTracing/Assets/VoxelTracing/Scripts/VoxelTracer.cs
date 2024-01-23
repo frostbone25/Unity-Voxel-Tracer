@@ -1,3 +1,4 @@
+//using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.ConstrainedExecution;
@@ -8,6 +9,7 @@ using Unity.Collections;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 
 /*
@@ -47,6 +49,15 @@ namespace UnityVoxelTracer
         public string voxelName = "Voxel"; //Name of the asset
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f); //Size of the volume
         public float voxelDensitySize = 1.0f; //Size of each voxel (Smaller = More Voxels, Larger = Less Voxels)
+
+        //controls how many "pixels" per unit an object will have.
+        public float texelDensityPerUnit = 1;
+
+        //minimum resolution for objects in the scene (so objects too small will be capped to this value resolution wise)
+        public int minimumBufferResolution = 16;
+
+        //[OPTIMIZATION] only includes meshes that are marked contribute GI static
+        public bool onlyIncludeGIContributors = true;
 
         //[TODO] This is W.I.P, might be removed.
         //This is supposed to help thicken geometry during voxelization to prevent leaks during tracing.
@@ -157,6 +168,8 @@ namespace UnityVoxelTracer
         private string voxelBounceLightVolumeBufferAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_bounceVolumetric.asset", voxelName);
         private string voxelCombinedVolumetricBufferAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_combinedVolumetric.asset", voxelName);
         private string environmentMapAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_environment.exr", voxelName);
+        private string voxelPreviewAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_voxelPreview.mat", voxelName);
+        private string volumetricFogPreviewAssetPath => localAssetSceneDataFolder + "/" + string.Format("{0}_fogPreview.mat", voxelName);
 
         private GameObject voxelCameraGameObject;
         private Camera voxelCamera;
@@ -177,10 +190,9 @@ namespace UnityVoxelTracer
         private ComputeShader voxelEnvironmentSurfaceLight;
         private ComputeShader voxelEnvironmentVolumetricLight;
         private ComputeShader addBuffers;
-        private ComputeShader averageBuffers;
-        private ComputeShader multiplyBuffers;
         private ComputeShader gaussianBlur;
         private ComputeShader voxelizeScene;
+        private ComputeShader dilate;
 
         private string slicerAssetPath => localAssetComputeFolder + "/VolumeSlicer.compute";
         private string voxelDirectSurfaceLightAssetPath => localAssetComputeFolder + "/VoxelDirectSurfaceLight.compute";
@@ -190,15 +202,16 @@ namespace UnityVoxelTracer
         private string voxelEnvironmentSurfaceLightAssetPath => localAssetComputeFolder + "/VoxelEnvironmentSurfaceLight.compute";
         private string voxelEnvironmentVolumetricLightAssetPath => localAssetComputeFolder + "/VoxelEnvironmentVolumetricLight.compute";
         private string addBuffersAssetPath => localAssetComputeFolder + "/AddBuffers.compute";
-        private string averageBuffersBufferAssetPath => localAssetComputeFolder + "/AverageBuffers.compute";
-        private string multiplyBuffersAssetPath => localAssetComputeFolder + "/MultiplyBuffers.compute";
         private string gaussianBlurAssetPath => localAssetComputeFolder + "/GaussianBlur3D.compute";
         private string voxelizeSceneAssetPath => localAssetComputeFolder + "/VoxelizeScene.compute";
+        private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
 
         private Shader cameraVoxelAlbedoShader => Shader.Find("Hidden/VoxelBufferAlbedo"); 
         private Shader cameraVoxelNormalShader => Shader.Find("Hidden/VoxelBufferNormal");
         private Shader cameraVoxelEmissiveShader => Shader.Find("Hidden/VoxelBufferEmissive");
         private Shader cameraVoxelHiddenShader => Shader.Find("Hidden/VoxelBufferHidden");
+        private Shader voxelPreviewShader => Shader.Find("Hidden/VoxelPreview");
+        private Shader volumetricFogPreviewShader => Shader.Find("Hidden/VolumetricFogPreview");
 
         private ComputeBuffer directionalLightsBuffer = null;
         private ComputeBuffer pointLightsBuffer = null;
@@ -224,79 +237,62 @@ namespace UnityVoxelTracer
             voxelEnvironmentVolumetricLight = AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelEnvironmentVolumetricLightAssetPath);
             gaussianBlur = AssetDatabase.LoadAssetAtPath<ComputeShader>(gaussianBlurAssetPath);
             addBuffers = AssetDatabase.LoadAssetAtPath<ComputeShader>(addBuffersAssetPath);
-            averageBuffers = AssetDatabase.LoadAssetAtPath<ComputeShader>(averageBuffersBufferAssetPath);
-            multiplyBuffers = AssetDatabase.LoadAssetAtPath<ComputeShader>(multiplyBuffersAssetPath);
             voxelizeScene = AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelizeSceneAssetPath);
+            dilate = AssetDatabase.LoadAssetAtPath<ComputeShader>(dilateAssetPath);
 
             if (slicer == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", slicerAssetPath));
                 return false;
             }
-
-            if (voxelDirectSurfaceLight == null)
+            else if (voxelDirectSurfaceLight == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelDirectSurfaceLightAssetPath));
                 return false;
             }
-
-            if (voxelDirectVolumetricLight == null)
+            else if(voxelDirectVolumetricLight == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelDirectVolumetricLightAssetPath));
                 return false;
             }
-
-            if (voxelBounceSurfaceLight == null)
+            else if(voxelBounceSurfaceLight == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelBounceSurfaceLightAssetPath));
                 return false;
             }
-
-            if (voxelBounceVolumetricLight == null)
+            else if(voxelBounceVolumetricLight == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelBounceVolumetricLightBufferAssetPath));
                 return false;
             }
-
-            if (voxelEnvironmentSurfaceLight == null)
+            else if(voxelEnvironmentSurfaceLight == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelEnvironmentSurfaceLightAssetPath));
                 return false;
             }
-
-            if (voxelEnvironmentVolumetricLight == null)
+            else if(voxelEnvironmentVolumetricLight == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelEnvironmentVolumetricLightAssetPath));
                 return false;
             }
-
-            if (gaussianBlur == null)
+            else if(gaussianBlur == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", gaussianBlurAssetPath));
                 return false;
             }
-
-            if (addBuffers == null)
+            else if(addBuffers == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", addBuffersAssetPath));
                 return false;
             }
-
-            if (averageBuffers == null)
-            {
-                Debug.LogError(string.Format("{0} does not exist!", averageBuffersBufferAssetPath));
-                return false;
-            }
-
-            if (multiplyBuffers == null)
-            {
-                Debug.LogError(string.Format("{0} does not exist!", multiplyBuffersAssetPath));
-                return false;
-            }
-
-            if (voxelizeScene == null)
+            else if(voxelizeScene == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelizeSceneAssetPath));
+                return false;
+            }
+            else if (dilate == null)
+            {
+                Debug.LogError(string.Format("{0} does not exist!", dilateAssetPath));
                 return false;
             }
 
@@ -573,7 +569,7 @@ namespace UnityVoxelTracer
             //voxelCamera.SetReplacementShader(replacementShader, renderTypeKey);
             voxelCamera.allowMSAA = enableAnitAliasing;
 
-            voxelCamera.Render();
+            //voxelCamera.Render();
 
             //compute per voxel position offset values.
             float xOffset = voxelSize.x / voxelResolution.x;
@@ -1240,9 +1236,6 @@ namespace UnityVoxelTracer
                 //fetch our function kernel in the compute shader
                 int ComputeShader_AddBuffers = addBuffers.FindKernel("ComputeShader_AddBuffers");
 
-                //make sure the compute shader knows our voxel resolution beforehand.
-                addBuffers.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
-
                 //feed the compute shader the textures that will be added together
                 addBuffers.SetTexture(ComputeShader_AddBuffers, "AddBufferA", bounceTemp);
                 addBuffers.SetTexture(ComputeShader_AddBuffers, "AddBufferB", voxelEnvironmentLightSurfaceBuffer);
@@ -1380,9 +1373,6 @@ namespace UnityVoxelTracer
             {
                 //fetch our function kernel in the compute shader
                 int ComputeShader_AddBuffers = addBuffers.FindKernel("ComputeShader_AddBuffers");
-
-                //make sure the compute shader knows our voxel resolution beforehand.
-                addBuffers.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
 
                 //feed the compute shader the textures that will be added together
                 addBuffers.SetTexture(ComputeShader_AddBuffers, "AddBufferA", bounceTemp);
@@ -1829,9 +1819,6 @@ namespace UnityVoxelTracer
             //fetch our function kernel in the compute shader
             int ComputeShader_AddBuffers = addBuffers.FindKernel("ComputeShader_AddBuffers");
 
-            //make sure the compute shader knows our voxel resolution beforehand.
-            addBuffers.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
-
             //feed the compute shader the textures that will be added together
             addBuffers.SetTexture(ComputeShader_AddBuffers, "AddBufferA", voxelDirectLightSurfaceBuffer);
             addBuffers.SetTexture(ComputeShader_AddBuffers, "AddBufferB", voxelBounceLightSurfaceBuffer);
@@ -1914,9 +1901,6 @@ namespace UnityVoxelTracer
             //fetch our function kernel in the compute shader
             int ComputeShader_AddBuffers = addBuffers.FindKernel("ComputeShader_AddBuffers");
 
-            //make sure the compute shader knows our voxel resolution beforehand.
-            addBuffers.SetVector("VolumeResolution", new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
-
             //get the result from the y pass and convert it into a texture3D so that it can be read one more time.
             Texture3D addedColorsTemp = voxelDirectLightVolumeBuffer;
 
@@ -1992,5 +1976,115 @@ namespace UnityVoxelTracer
         public void UpdateProgressBar(string description, float progress) => EditorUtility.DisplayProgressBar("Voxel Tracer", description, progress);
 
         public void CloseProgressBar() => EditorUtility.ClearProgressBar();
+
+        public void CreateVoxelPreview()
+        {
+            SetupAssetFolders();
+
+            GameObject voxelPreviewGameObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            voxelPreviewGameObject.name = "Voxel Preview";
+            voxelPreviewGameObject.transform.position = transform.position;
+            voxelPreviewGameObject.transform.localScale = voxelSize;
+            voxelPreviewGameObject.transform.SetParent(transform);
+
+            GameObject volumetricFogPreviewGameObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            volumetricFogPreviewGameObject.name = "Volumetric Fog Preview";
+            volumetricFogPreviewGameObject.transform.position = transform.position;
+            volumetricFogPreviewGameObject.transform.localScale = voxelSize;
+            volumetricFogPreviewGameObject.transform.SetParent(transform);
+
+            BoxCollider voxelPreviewBoxCollider = voxelPreviewGameObject.GetComponent<BoxCollider>();
+            BoxCollider volumetricFogPreviewBoxCollider = volumetricFogPreviewGameObject.GetComponent<BoxCollider>();
+
+            DestroyImmediate(voxelPreviewBoxCollider);
+            DestroyImmediate(volumetricFogPreviewBoxCollider);
+
+            MeshRenderer voxelPreviewMeshRenderer = voxelPreviewGameObject.GetComponent<MeshRenderer>();
+            MeshRenderer volumetricFogPreviewMeshRenderer = volumetricFogPreviewGameObject.GetComponent<MeshRenderer>();
+
+            Material voxelPreviewMaterial = new Material(voxelPreviewShader);
+            Material volumetricFogPreviewMaterial = new Material(volumetricFogPreviewShader);
+
+            voxelPreviewMaterial.SetVector("_VolumePos", voxelPreviewGameObject.transform.position);
+            voxelPreviewMaterial.SetVector("_VolumeSize", voxelSize);
+
+            volumetricFogPreviewMaterial.SetVector("_VolumePos", voxelPreviewGameObject.transform.position);
+            volumetricFogPreviewMaterial.SetVector("_VolumeSize", voxelSize);
+
+            AssetDatabase.CreateAsset(voxelPreviewMaterial, voxelPreviewAssetPath);
+            AssetDatabase.CreateAsset(volumetricFogPreviewMaterial, volumetricFogPreviewAssetPath);
+
+            voxelPreviewMeshRenderer.material = voxelPreviewMaterial;
+            volumetricFogPreviewMeshRenderer.material = volumetricFogPreviewMaterial;
+        }
+
+        /// <summary>
+        /// Gets an array of renderer objects after LOD0 on an LODGroup.
+        /// </summary>
+        /// <param name="lodGroup"></param>
+        /// <returns></returns>
+        public static Renderer[] GetRenderersAfterLOD0(LODGroup lodGroup)
+        {
+            //get LODGroup lods
+            LOD[] lods = lodGroup.GetLODs();
+
+            //If there are no LODs...
+            //Or there is only one LOD level...
+            //Ignore this LODGroup and return nothing (we only want the renderers that are used for the other LOD groups)
+            if (lods.Length < 2)
+                return null;
+
+            //Initalize a dynamic array list of renderers that will be filled
+            List<Renderer> renderers = new List<Renderer>();
+
+            //Skip the first LOD level...
+            //And iterate through the rest of the LOD groups to get it's renderers
+            for (int i = 1; i < lods.Length; i++)
+            {
+                for (int j = 0; j < lods[i].renderers.Length; j++)
+                {
+                    Renderer lodRenderer = lods[i].renderers[j];
+
+                    if (lodRenderer != null)
+                        renderers.Add(lodRenderer);
+                }
+            }
+
+            //If no renderers were found, then return nothing.
+            if (renderers.Count <= 0)
+                return null;
+
+            return renderers.ToArray();
+        }
+
+        /// <summary>
+        /// Returns a list of hashes for the given renderer array.
+        /// </summary>
+        /// <param name="renderers"></param>
+        /// <returns></returns>
+        public static int[] GetRendererHashCodes(Renderer[] renderers)
+        {
+            int[] hashCodeArray = new int[renderers.Length];
+
+            for (int i = 0; i < hashCodeArray.Length; i++)
+                hashCodeArray[i] = renderers[i].GetHashCode();
+
+            return hashCodeArray;
+        }
+
+        /// <summary>
+        /// Returns a hash code array of renderers found after LOD0 in a given LOD group.
+        /// </summary>
+        /// <param name="lodGroup"></param>
+        /// <returns></returns>
+        public static int[] GetRendererHashCodesAfterLOD0(LODGroup lodGroup)
+        {
+            Renderer[] renderers = GetRenderersAfterLOD0(lodGroup);
+
+            if (renderers == null || renderers.Length <= 1)
+                return null;
+            else
+                return GetRendererHashCodes(renderers);
+        }
     }
 }

@@ -200,8 +200,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 496284634}
-  m_LocalRotation: {x: 0.097036704, y: 0.402381, z: -0.043395016, w: 0.9092802}
-  m_LocalPosition: {x: -62.648182, y: 34.063038, z: -26.941475}
+  m_LocalRotation: {x: 0.14361952, y: 0.39568573, z: -0.066742, w: 0.904628}
+  m_LocalPosition: {x: -48.80479, y: 17.063225, z: -26.567587}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -366,7 +366,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!135 &1086677849
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -524,6 +524,42 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
+--- !u!1 &1179323715 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8164078558771037576, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
+  m_PrefabInstance: {fileID: 1179323714}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1179323716
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1179323715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  camera: {fileID: 0}
+--- !u!1 &1179323717 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
+  m_PrefabInstance: {fileID: 1179323714}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1179323718
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1179323717}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  camera: {fileID: 496284636}
 --- !u!1 &1425651867
 GameObject:
   m_ObjectHideFlags: 0
@@ -559,16 +595,24 @@ MonoBehaviour:
   enableEnvironmentLighting: 0
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
+  volumetricTracing: 1
+  directSurfaceSamples: 128
+  directVolumetricSamples: 128
+  environmentSurfaceSamples: 64
+  environmentVolumetricSamples: 64
   bounceSurfaceSamples: 256
   bounceVolumetricSamples: 128
   bounces: 4
-  environmentSurfaceSamples: 64
-  environmentVolumetricSamples: 64
   normalOrientedHemisphereSampling: 1
+  albedoBoost: 1
+  indirectIntensity: 1
+  environmentIntensity: 1
+  emissiveIntensity: 1
+  enableGPU_Readback_Limit: 1
   GPU_Readback_Limit: 4
-  showDetailedProgress: 1
   volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 4
+  volumetricEnvironmentGaussianSamples: 0
   previewBounds: 1
 --- !u!4 &1425651869
 Transform:
