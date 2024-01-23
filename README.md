@@ -1,6 +1,6 @@
 # Unity Voxel Tracer
 
-Work in progress voxel tracer. This is intended to be an offline solution for generating lighting/volumetrics.
+Work in progress voxel tracer. This is intended to be an offline solution for generating scene lighting and [volumetrics](https://github.com/frostbone25/Unity-Baked-Volumetrics).
 
 ### Features
 - Direct Lighting *(Directional, Spot, Point, Area)*
