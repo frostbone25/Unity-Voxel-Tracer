@@ -17,40 +17,40 @@ Work in progress voxel tracer. This is intended to be an offline solution for ge
 
 # Screenshots
 
-![1](GithubContent/1.png)
+![a1](GithubContent/a.png)
 *Voxel Trace: Final Lighting*
 
-![4](GithubContent/4.png)
+![d](GithubContent/d.png)
 *Voxel Trace: Direct Lighting*
 
-![5](GithubContent/5.png)
+![e](GithubContent/e.png)
 *Voxel Trace: Single Bounce Environment Lighting.*
 
-![2](GithubContent/2.png)
+![b](GithubContent/b.png)
 *Voxel Trace: Scene Albedo Buffer*
 
-![3](GithubContent/3.png)
+![c](GithubContent/c.png)
 *Voxel Trace: Scene Normals Buffer*
 
-![7](GithubContent/7.png)
+![g](GithubContent/g.png)
 *Voxel Trace: Emissive Lighting*
 
-![8](GithubContent/8.png)
+![h](GithubContent/h.png)
 *Voxel Trace: Scene Emissive Buffer*
 
-![9](GithubContent/9.png)
+![i](GithubContent/i.png)
 *Voxel Trace: Volumetric Emissive Lighting.*
 
-![10](GithubContent/10.png)
+![j](GithubContent/j.png)
 *Voxel Trace: Final Volumetric Lighting.*
 
-![12](GithubContent/12.png)
+![l](GithubContent/l.png)
 *Voxel Trace: Volumetric Direct Lighting Only.*
 
-![13](GithubContent/13.png)
+![m](GithubContent/m.png)
 *Voxel Trace: Volumetric Bounced Lighting Only.*
 
-![11](GithubContent/11.png)
+![k](GithubContent/k.png)
 *Voxel Trace: Volumetric Environment Lighting Only.*
 
 ### Why?
