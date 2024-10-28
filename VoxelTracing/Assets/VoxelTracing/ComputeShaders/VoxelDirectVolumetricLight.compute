@@ -474,6 +474,8 @@ void ComputeShader_TraceVolumeDirectLight(uint3 id : SV_DispatchThreadID)
         }
     #endif
 
+    finalColor.rgb /= UNITY_PI;
+
     //accumulate samples into the render target
     Write[id.xyz] = float4(Write[id.xyz].rgb + (finalColor / MaxDirectSamples), 1);
 }

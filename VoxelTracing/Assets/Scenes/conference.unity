@@ -541,7 +541,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  camera: {fileID: 0}
+  texelDensityPerUnit: 1
+  minimumResolution: 16
+  onlyIncludeGIContributors: 1
 --- !u!1 &1179323717 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
@@ -559,7 +561,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  camera: {fileID: 496284636}
+  texelDensityPerUnit: 1
+  minimumResolution: 16
+  onlyIncludeGIContributors: 1
 --- !u!1 &1425651867
 GameObject:
   m_ObjectHideFlags: 0
@@ -592,6 +596,9 @@ MonoBehaviour:
   voxelName: Conference
   voxelSize: {x: 83.8, y: 23.1, z: 53.2}
   voxelDensitySize: 0.25
+  texelDensityPerUnit: 1
+  minimumBufferResolution: 16
+  onlyIncludeGIContributors: 1
   enableEnvironmentLighting: 0
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}

@@ -197,6 +197,10 @@
                     {
                         #if defined (OPAQUE_RESULT)
                             float4 sampledColor = tex3Dlod(_VolumeTexture, float4(scaledPos, _MipLevel)) * _Brightness;
+                            
+                            //if(sampledColor.a < 1.0f)
+                            if(sampledColor.a < _Density)
+                                sampledColor = float4(0, 0, 0, 0);
 
                             result += sampledColor;
 

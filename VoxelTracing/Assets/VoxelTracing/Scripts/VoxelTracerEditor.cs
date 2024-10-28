@@ -309,7 +309,10 @@ namespace UnityVoxelTracer
             EditorGUILayout.LabelField("Direct Lighting", EditorStyles.boldLabel);
 
             if (GUILayout.Button("Trace Direct Surface Lighting"))
-                scriptObject.TraceDirectSurfaceLighting();
+                scriptObject.TraceDirectSurfaceLighting(true);
+
+            if (GUILayout.Button("Trace Direct Surface Lighting (No Albedo)"))
+                scriptObject.TraceDirectSurfaceLighting(false);
 
             if (volumetricTracing.boolValue)
             {
@@ -319,8 +322,15 @@ namespace UnityVoxelTracer
 
             if (enableEnvironmentLighting.boolValue)
             {
+                EditorGUILayout.Space(guiSpace);
+
+                EditorGUILayout.LabelField("Environment Direct Lighting", EditorStyles.boldLabel);
+
                 if (GUILayout.Button("Trace Environment Surface Lighting"))
-                    scriptObject.TraceEnvironmentSurfaceLighting();
+                    scriptObject.TraceEnvironmentSurfaceLighting(true);
+
+                if (GUILayout.Button("Trace Environment Surface Lighting (No Albedo)"))
+                    scriptObject.TraceEnvironmentSurfaceLighting(false);
 
                 if (volumetricTracing.boolValue)
                 {
@@ -331,10 +341,23 @@ namespace UnityVoxelTracer
 
             EditorGUILayout.Space(guiSpace);
 
+            EditorGUILayout.LabelField("Final Direct Lighting", EditorStyles.boldLabel);
+
+            if (GUILayout.Button("Combine Direct Light Terms")) 
+                scriptObject.CombineDirectSurfaceLightingTerms(true);
+
+            if (GUILayout.Button("Combine Direct Light Terms (No Albedo)"))
+                scriptObject.CombineDirectSurfaceLightingTerms(false);
+
+            EditorGUILayout.Space(guiSpace);
+
             EditorGUILayout.LabelField("Bounce Lighting", EditorStyles.boldLabel);
 
             if (GUILayout.Button("Trace Bounce Surface Lighting"))
-                scriptObject.TraceBounceSurfaceLighting();
+                scriptObject.TraceBounceSurfaceLighting(true);
+
+            if (GUILayout.Button("Trace Bounce Surface Lighting (No Albedo)"))
+                scriptObject.TraceBounceSurfaceLighting(false);
 
             if (volumetricTracing.boolValue)
             {
@@ -347,7 +370,10 @@ namespace UnityVoxelTracer
             EditorGUILayout.LabelField("Final", EditorStyles.boldLabel);
 
             if (GUILayout.Button("Combine Surface Direct and Bounce Light"))
-                scriptObject.CombineSurfaceLighting();
+                scriptObject.CombineSurfaceLighting(true);
+
+            if (GUILayout.Button("Combine Surface Direct and Bounce Light (No Albedo)"))
+                scriptObject.CombineSurfaceLighting(false);
 
             if (volumetricTracing.boolValue)
             {

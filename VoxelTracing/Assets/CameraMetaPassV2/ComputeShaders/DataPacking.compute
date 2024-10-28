@@ -1,0 +1,149 @@
+#define THREAD_GROUP_SIZE_X 8
+#define THREAD_GROUP_SIZE_Y 8
+#define THREAD_GROUP_SIZE_Z 8
+
+#include "BitPacking.cginc"
+
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+
+RWTexture2D<float4> AlbedoBuffer;
+RWTexture2D<float4> EmissiveBuffer;
+RWTexture2D<float4> NormalBuffer;
+
+RWTexture2D<float4> PackedBuffer;
+
+RWTexture2D<float4> Write;
+
+//||||||||||||||||||||||||||||| ComputeShader_DataPacking |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_DataPacking |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_DataPacking |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_DataPacking
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+void ComputeShader_DataPacking(uint3 id : SV_DispatchThreadID)
+{
+    float4 albedoColor = AlbedoBuffer[id.xy];
+    float4 emissiveColor = EmissiveBuffer[id.xy];
+    float4 normalColor = NormalBuffer[id.xy];
+
+    //||||||||||||||||| ALBEDO BUFFER 16 BITS |||||||||||||||||
+    //||||||||||||||||| ALBEDO BUFFER 16 BITS |||||||||||||||||
+    //||||||||||||||||| ALBEDO BUFFER 16 BITS |||||||||||||||||
+    uint ALBEDO_R5 = albedoColor.r * BITS_5_MAX_VALUE;
+    uint ALBEDO_G5 = albedoColor.g * BITS_5_MAX_VALUE;
+    uint ALBEDO_B5 = albedoColor.b * BITS_5_MAX_VALUE;
+    uint ALBEDO_A1 = ceil(albedoColor.a);
+
+    ALBEDO_R5 = ALBEDO_R5 & BITS_5_MAX_VALUE;
+    ALBEDO_G5 = ALBEDO_G5 & BITS_5_MAX_VALUE;
+    ALBEDO_B5 = ALBEDO_B5 & BITS_5_MAX_VALUE;
+    ALBEDO_A1 = ALBEDO_A1;
+
+    uint combinedAlbedo_16bit_R5G5B5A1 = ALBEDO_R5 | ALBEDO_G5 << BITS_5 | ALBEDO_B5 << BITS_10 | ALBEDO_A1 << BITS_15;
+    float packedAlbedo_16bit_R5G5B5A1 = combinedAlbedo_16bit_R5G5B5A1 / float(BITS_16_MAX_VALUE);
+
+    //||||||||||||||||| NORMAL BUFFER 16 BITS (15 BITS USED) |||||||||||||||||
+    //||||||||||||||||| NORMAL BUFFER 16 BITS (15 BITS USED) |||||||||||||||||
+    //||||||||||||||||| NORMAL BUFFER 16 BITS (15 BITS USED) |||||||||||||||||
+
+    uint NORMAL_R5 = normalColor.r * BITS_5_MAX_VALUE;
+    uint NORMAL_G5 = normalColor.g * BITS_5_MAX_VALUE;
+    uint NORMAL_B5 = normalColor.b * BITS_5_MAX_VALUE;
+
+    NORMAL_R5 = NORMAL_R5 & BITS_5_MAX_VALUE;
+    NORMAL_G5 = NORMAL_G5 & BITS_5_MAX_VALUE;
+    NORMAL_B5 = NORMAL_B5 & BITS_5_MAX_VALUE;
+
+    uint combinedNormal_15bit_R5G5B5 = NORMAL_R5 | NORMAL_G5 << BITS_5 | NORMAL_B5 << BITS_10;
+    float packedNormal_15bit_R5G5B5 = combinedNormal_15bit_R5G5B5 / float(BITS_16_MAX_VALUE);
+
+    //||||||||||||||||| EMISSIVE BUFFER 32 BITS (31 BITS USED) |||||||||||||||||
+    //||||||||||||||||| EMISSIVE BUFFER 32 BITS (31 BITS USED) |||||||||||||||||
+    //||||||||||||||||| EMISSIVE BUFFER 32 BITS (31 BITS USED) |||||||||||||||||
+
+    float4 encodedEmissionColor = EncodeRGBM(emissiveColor.rgb);
+
+    float colorMultiplier = encodedEmissionColor.a;
+    float packed_16bit_colorMultiplier = f32tof16(colorMultiplier) / float(BITS_16_MAX_VALUE);
+
+    uint EMISSION_R5 = encodedEmissionColor.r * BITS_5_MAX_VALUE;
+    uint EMISSION_G5 = encodedEmissionColor.g * BITS_5_MAX_VALUE;
+    uint EMISSION_B5 = encodedEmissionColor.b * BITS_5_MAX_VALUE;
+
+    EMISSION_R5 = EMISSION_R5 & BITS_5_MAX_VALUE;
+    EMISSION_G5 = EMISSION_G5 & BITS_5_MAX_VALUE;
+    EMISSION_B5 = EMISSION_B5 & BITS_5_MAX_VALUE;
+
+    uint combinedEmission_15bit_R5G5B5 = EMISSION_R5 | EMISSION_G5 << BITS_5 | EMISSION_B5 << BITS_10;
+    float packedEmission_15bit_R5G5B5 = combinedEmission_15bit_R5G5B5 / float(BITS_16_MAX_VALUE);
+
+    //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (62 BITS USED) |||||||||||||||||
+    //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (62 BITS USED) |||||||||||||||||
+    //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (62 BITS USED) |||||||||||||||||
+
+    Write[id.xy] = float4(packedAlbedo_16bit_R5G5B5A1, packedNormal_15bit_R5G5B5, packedEmission_15bit_R5G5B5, packed_16bit_colorMultiplier);
+}
+
+//||||||||||||||||||||||||||||| ComputeShader_DataUnpacking |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_DataUnpacking |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_DataUnpacking |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_DataUnpacking
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+void ComputeShader_DataUnpacking(uint3 id : SV_DispatchThreadID)
+{
+    float4 packedBuffer = PackedBuffer[id.xy];
+
+    //||||||||||||||||| ALBEDO BUFFER 16 BITS |||||||||||||||||
+    //||||||||||||||||| ALBEDO BUFFER 16 BITS |||||||||||||||||
+    //||||||||||||||||| ALBEDO BUFFER 16 BITS |||||||||||||||||
+    uint ALBEDO_R5G5B5A1 = packedBuffer.r * BITS_16_MAX_VALUE;
+
+    uint ALBEDO_R5 = BitFieldExtract(ALBEDO_R5G5B5A1, 0u, 5u) << BITS_11;
+    uint ALBEDO_G5 = BitFieldExtract(ALBEDO_R5G5B5A1, 5u, 5u) << BITS_11;
+    uint ALBEDO_B5 = BitFieldExtract(ALBEDO_R5G5B5A1, 10u, 5u) << BITS_11;
+    uint ALBEDO_A1 = BitFieldExtract(ALBEDO_R5G5B5A1, 15u, 1u) << BITS_16;
+
+    float4 unpackedAlbedo = float4(ALBEDO_R5, ALBEDO_G5, ALBEDO_B5, ALBEDO_A1) / float(BITS_16_MAX_VALUE);
+
+    //||||||||||||||||| NORMAL BUFFER 16 BITS (15 BITS USED) |||||||||||||||||
+    //||||||||||||||||| NORMAL BUFFER 16 BITS (15 BITS USED) |||||||||||||||||
+    //||||||||||||||||| NORMAL BUFFER 16 BITS (15 BITS USED) |||||||||||||||||
+    uint NORMAL_R5G5B5 = packedBuffer.g * BITS_16_MAX_VALUE;
+
+    uint NORMAL_R5 = BitFieldExtract(NORMAL_R5G5B5, 0u, 5u) << BITS_11;
+    uint NORMAL_G5 = BitFieldExtract(NORMAL_R5G5B5, 5u, 5u) << BITS_11;
+    uint NORMAL_B5 = BitFieldExtract(NORMAL_R5G5B5, 10u, 5u) << BITS_11;
+
+    float4 unpackedNormal = float4(NORMAL_R5, NORMAL_G5, NORMAL_B5, 1.0f) / float(BITS_16_MAX_VALUE);
+
+    //||||||||||||||||| EMISSIVE BUFFER 32 BITS (31 BITS USED) |||||||||||||||||
+    //||||||||||||||||| EMISSIVE BUFFER 32 BITS (31 BITS USED) |||||||||||||||||
+    //||||||||||||||||| EMISSIVE BUFFER 32 BITS (31 BITS USED) |||||||||||||||||
+
+    uint EMISSIVE_R5G5B5 = packedBuffer.b * BITS_16_MAX_VALUE;
+    uint EMISSIVE_Multiplier = packedBuffer.a * BITS_16_MAX_VALUE;
+
+    uint EMISSIVE_R5 = BitFieldExtract(EMISSIVE_R5G5B5, 0u, 5u) << BITS_11;
+    uint EMISSIVE_G5 = BitFieldExtract(EMISSIVE_R5G5B5, 5u, 5u) << BITS_11;
+    uint EMISSIVE_B5 = BitFieldExtract(EMISSIVE_R5G5B5, 10u, 5u) << BITS_11;
+
+    float3 unpackedEncodedEmissiveColor = float3(EMISSIVE_R5, EMISSIVE_G5, EMISSIVE_B5) / float(BITS_16_MAX_VALUE);
+    float unpackedEncodedEmissiveMultiplier = f16tof32(EMISSIVE_Multiplier);
+
+    float3 unpackedEmissive = DecodeRGBM(float4(unpackedEncodedEmissiveColor, unpackedEncodedEmissiveMultiplier));
+
+    //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (62 BITS USED) |||||||||||||||||
+    //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (62 BITS USED) |||||||||||||||||
+    //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (62 BITS USED) |||||||||||||||||
+
+    AlbedoBuffer[id.xy] = unpackedAlbedo;
+    NormalBuffer[id.xy] = unpackedNormal;
+    EmissiveBuffer[id.xy] = float4(unpackedEmissive, 1);
+
+    //AlbedoBuffer[id.xy] = float4(1, 0, 0, 1);
+    //NormalBuffer[id.xy] = float4(0, 1, 0, 1);
+    //EmissiveBuffer[id.xy] = float4(0, 0, 1, 1);
+}

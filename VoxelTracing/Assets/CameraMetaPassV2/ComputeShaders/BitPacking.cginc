@@ -1,0 +1,671 @@
+#define BITS_32 32
+#define BITS_24 24
+#define BITS_20 20
+#define BITS_18 18
+#define BITS_16 16
+#define BITS_15 15
+#define BITS_12 12
+#define BITS_11 11
+#define BITS_10 10
+#define BITS_9 9
+#define BITS_8 8
+#define BITS_7 7
+#define BITS_6 6
+#define BITS_5 5
+#define BITS_4 4
+#define BITS_3 3
+#define BITS_2 2
+#define BITS_1 1
+
+#define BITS_32_MAX 2147483647
+#define BITS_24_MAX 16777216
+#define BITS_20_MAX 1048576
+#define BITS_18_MAX 262144
+#define BITS_16_MAX 65536
+#define BITS_15_MAX 32767
+#define BITS_12_MAX 4096
+#define BITS_10_MAX 1024
+#define BITS_9_MAX 512
+#define BITS_8_MAX 256
+#define BITS_7_MAX 128
+#define BITS_6_MAX 64
+#define BITS_5_MAX 32
+#define BITS_4_MAX 16
+#define BITS_3_MAX 8
+#define BITS_2_MAX 4
+#define BITS_1_MAX 2
+
+#define BITS_32_MAX_VALUE 2147483646
+#define BITS_24_MAX_VALUE 16777215
+#define BITS_20_MAX_VALUE 1048575
+#define BITS_18_MAX_VALUE 262143
+#define BITS_16_MAX_VALUE 65535
+#define BITS_15_MAX_VALUE 32766
+#define BITS_12_MAX_VALUE 4095
+#define BITS_10_MAX_VALUE 1023
+#define BITS_9_MAX_VALUE 511
+#define BITS_8_MAX_VALUE 255
+#define BITS_7_MAX_VALUE 127
+#define BITS_6_MAX_VALUE 63
+#define BITS_5_MAX_VALUE 31
+#define BITS_4_MAX_VALUE 15
+#define BITS_3_MAX_VALUE 7
+#define BITS_2_MAX_VALUE 3
+#define BITS_1_MAX_VALUE 1
+
+//|||||||||||||||||||||||||||||||||||||| SRP CORE PACKING ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| SRP CORE PACKING ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| SRP CORE PACKING ||||||||||||||||||||||||||||||||||||||
+
+// Unsigned integer bit field extraction.
+// Note that the intrinsic itself generates a vector instruction.
+// Wrap this function with WaveReadLaneFirst() to get scalar output.
+uint BitFieldExtract(uint data, uint offset, uint numBits)
+{
+	uint mask = (1u << numBits) - 1u;
+	return (data >> offset) & mask;
+}
+
+//-----------------------------------------------------------------------------
+// Integer packing
+//-----------------------------------------------------------------------------
+
+// Packs an integer stored using at most 'numBits' into a [0..1] float.
+float PackInt(uint i, uint numBits)
+{
+    uint maxInt = (1u << numBits) - 1u;
+    return saturate(i * rcp(maxInt));
+}
+
+// Unpacks a [0..1] float into an integer of size 'numBits'.
+uint UnpackInt(float f, uint numBits)
+{
+    uint maxInt = (1u << numBits) - 1u;
+    return (uint)(f * maxInt + 0.5); // Round instead of truncating
+}
+
+// Packs a [0..255] integer into a [0..1] float.
+float PackByte(uint i)
+{
+    return PackInt(i, 8);
+}
+
+// Unpacks a [0..1] float into a [0..255] integer.
+uint UnpackByte(float f)
+{
+    return UnpackInt(f, 8);
+}
+
+// Packs a [0..65535] integer into a [0..1] float.
+float PackShort(uint i)
+{
+    return PackInt(i, 16);
+}
+
+// Unpacks a [0..1] float into a [0..65535] integer.
+uint UnpackShort(float f)
+{
+    return UnpackInt(f, 16);
+}
+
+// Packs 8 lowermost bits of a [0..65535] integer into a [0..1] float.
+float PackShortLo(uint i)
+{
+    uint lo = BitFieldExtract(i, 0u, 8u);
+    return PackInt(lo, 8);
+}
+
+// Packs 8 uppermost bits of a [0..65535] integer into a [0..1] float.
+float PackShortHi(uint i)
+{
+    uint hi = BitFieldExtract(i, 8u, 8u);
+    return PackInt(hi, 8);
+}
+
+float Pack2Byte(float2 inputs)
+{
+    float2 temp = inputs * float2(255.0, 255.0);
+    temp.x *= 256.0;
+    temp = round(temp);
+    float combined = temp.x + temp.y;
+    return combined * (1.0 / 65535.0);
+}
+
+float2 Unpack2Byte(float inputs)
+{
+    float temp = round(inputs * 65535.0);
+    float ipart;
+    float fpart = modf(temp / 256.0, ipart);
+    float2 result = float2(ipart, round(256.0 * fpart));
+    return result * (1.0 / float2(255.0, 255.0));
+}
+
+// Encode a float in [0..1] and an int in [0..maxi - 1] as a float [0..1] to be store in log2(precision) bit
+// maxi must be a power of two and define the number of bit dedicated 0..1 to the int part (log2(maxi))
+// Example: precision is 256.0, maxi is 2, i is [0..1] encode on 1 bit. f is [0..1] encode on 7 bit.
+// Example: precision is 256.0, maxi is 4, i is [0..3] encode on 2 bit. f is [0..1] encode on 6 bit.
+// Example: precision is 256.0, maxi is 8, i is [0..7] encode on 3 bit. f is [0..1] encode on 5 bit.
+// ...
+// Example: precision is 1024.0, maxi is 8, i is [0..7] encode on 3 bit. f is [0..1] encode on 7 bit.
+//...
+float PackFloatInt(float f, uint i, float maxi, float precision)
+{
+    // Constant
+    float precisionMinusOne = precision - 1.0;
+    float t1 = ((precision / maxi) - 1.0) / precisionMinusOne;
+    float t2 = (precision / maxi) / precisionMinusOne;
+
+    return t1 * f + t2 * float(i);
+}
+
+void UnpackFloatInt(float val, float maxi, float precision, out float f, out uint i)
+{
+    // Constant
+    float precisionMinusOne = precision - 1.0;
+    float t1 = ((precision / maxi) - 1.0) / precisionMinusOne;
+    float t2 = (precision / maxi) / precisionMinusOne;
+
+    // extract integer part
+    i = int((val / t2) + rcp(precisionMinusOne)); // + rcp(precisionMinusOne) to deal with precision issue (can't use round() as val contain the floating number
+    // Now that we have i, solve formula in PackFloatInt for f
+    //f = (val - t2 * float(i)) / t1 => convert in mads form
+    f = saturate((-t2 * float(i) + val) / t1); // Saturate in case of precision issue
+}
+
+// Define various variante for ease of read
+float PackFloatInt8bit(float f, uint i, float maxi)
+{
+    return PackFloatInt(f, i, maxi, 256.0);
+}
+
+void UnpackFloatInt8bit(float val, float maxi, out float f, out uint i)
+{
+    UnpackFloatInt(val, maxi, 256.0, f, i);
+}
+
+float PackFloatInt10bit(float f, uint i, float maxi)
+{
+    return PackFloatInt(f, i, maxi, 1024.0);
+}
+
+void UnpackFloatInt10bit(float val, float maxi, out float f, out uint i)
+{
+    UnpackFloatInt(val, maxi, 1024.0, f, i);
+}
+
+float PackFloatInt16bit(float f, uint i, float maxi)
+{
+    return PackFloatInt(f, i, maxi, 65536.0);
+}
+
+void UnpackFloatInt16bit(float val, float maxi, out float f, out uint i)
+{
+    UnpackFloatInt(val, maxi, 65536.0, f, i);
+}
+
+//-----------------------------------------------------------------------------
+// Float packing
+//-----------------------------------------------------------------------------
+
+// src must be between 0.0 and 1.0
+uint PackFloatToUInt(float src, uint offset, uint numBits)
+{
+    return UnpackInt(src, numBits) << offset;
+}
+
+float UnpackUIntToFloat(uint src, uint offset, uint numBits)
+{
+    uint maxInt = (1u << numBits) - 1u;
+    return float(BitFieldExtract(src, offset, numBits)) * rcp(maxInt);
+}
+
+uint PackToR10G10B10A2(float4 rgba)
+{
+    return (PackFloatToUInt(rgba.x, 0, 10) |
+        PackFloatToUInt(rgba.y, 10, 10) |
+        PackFloatToUInt(rgba.z, 20, 10) |
+        PackFloatToUInt(rgba.w, 30, 2));
+}
+
+float4 UnpackFromR10G10B10A2(uint rgba)
+{
+    float4 output;
+    output.x = UnpackUIntToFloat(rgba, 0, 10);
+    output.y = UnpackUIntToFloat(rgba, 10, 10);
+    output.z = UnpackUIntToFloat(rgba, 20, 10);
+    output.w = UnpackUIntToFloat(rgba, 30, 2);
+    return output;
+}
+
+// Both the input and the output are in the [0, 1] range.
+float2 PackFloatToR8G8(float f)
+{
+    uint i = UnpackShort(f);
+    return float2(PackShortLo(i), PackShortHi(i));
+}
+
+// Both the input and the output are in the [0, 1] range.
+float UnpackFloatFromR8G8(float2 f)
+{
+    uint lo = UnpackByte(f.x);
+    uint hi = UnpackByte(f.y);
+    uint cb = (hi << 8) + lo;
+    return PackShort(cb);
+}
+
+// Pack float2 (each of 12 bit) in 888
+float3 PackFloat2To888(float2 f)
+{
+    uint2 i = (uint2)(f * 4095.5);
+    uint2 hi = i >> 8;
+    uint2 lo = i & 255;
+    // 8 bit in lo, 4 bit in hi
+    uint3 cb = uint3(lo, hi.x | (hi.y << 4));
+
+    return cb / 255.0;
+}
+
+// Unpack 2 float of 12bit packed into a 888
+float2 Unpack888ToFloat2(float3 x)
+{
+    uint3 i = (uint3)(x * 255.5); // +0.5 to fix precision error on iOS 
+    // 8 bit in lo, 4 bit in hi
+    uint hi = i.z >> 4;
+    uint lo = i.z & 15;
+    uint2 cb = i.xy | uint2(lo << 8, hi << 8);
+
+    return cb / 4095.0;
+}
+
+// Pack 2 float values from the [0, 1] range, to an 8 bits float from the [0, 1] range
+float PackFloat2To8(float2 f)
+{
+    float x_expanded = f.x * 15.0;                        // f.x encoded over 4 bits, can have 2^4 = 16 distinct values mapped to [0, 1, ..., 15]
+    float y_expanded = f.y * 15.0;                        // f.y encoded over 4 bits, can have 2^4 = 16 distinct values mapped to [0, 1, ..., 15]
+    float x_y_expanded = x_expanded * 16.0 + y_expanded;  // f.x encoded over higher bits, f.y encoded over the lower bits - x_y values in range [0, 1, ..., 255]
+    return x_y_expanded / 255.0;
+
+    // above 4 lines equivalent to:
+    //return (16.0 * f.x + f.y) / 17.0; 
+}
+
+// Unpack 2 float values from the [0, 1] range, packed in an 8 bits float from the [0, 1] range
+float2 Unpack8ToFloat2(float f)
+{
+    float x_y_expanded = 255.0 * f;
+    float x_expanded = floor(x_y_expanded / 16.0);
+    float y_expanded = x_y_expanded - 16.0 * x_expanded;
+    float x = x_expanded / 15.0;
+    float y = y_expanded / 15.0;
+    return float2(x, y);
+}
+
+//
+// Hue, Saturation, Value
+// Ranges:
+//  Hue [0.0, 1.0]
+//  Sat [0.0, 1.0]
+//  Lum [0.0, HALF_MAX]
+//
+#define EPSILON 1.0e-4
+#define Epsilon 1e-10
+
+//https://www.chilliant.com/rgb2hsv.html
+float3 RgbToHsv(float3 c)
+{
+    float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+
+    float hue = abs(q.z + (q.w - q.y) / (6.0 * d + EPSILON));
+    float saturation = d / (q.x + EPSILON);
+    float value = q.x;
+
+    return float3(hue, saturation, value);
+}
+
+float3 HsvToRgb(float3 c)
+{
+    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
+}
+
+// Convert rgb to luminance
+// with rgb in linear space with sRGB primaries and D65 white point
+float Luminance(float3 linearRgb)
+{
+    return dot(linearRgb, float3(0.2126729, 0.7151522, 0.0721750));
+}
+
+#define RGBM_Range 6.0
+
+float4 EncodeRGBM(float3 rgb)
+{
+    float maxRGB = max(rgb.x, max(rgb.g, rgb.b));
+    float M = maxRGB / RGBM_Range;
+    M = ceil(M * 255.0) / 255.0;
+    return float4(rgb / (M * RGBM_Range), M);
+}
+
+float3 DecodeRGBM(float4 rgbm)
+{
+    return rgbm.rgb * (rgbm.a * RGBM_Range);
+}
+
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color16_Alpha0_HDR16 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color16_Alpha0_HDR16 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color16_Alpha0_HDR16 ||||||||||||||||||||||||||||||||||||||
+
+// Ref: http://floattimecollisiondetection.net/blog/?p=15
+float4 PackToLogLuv(float3 vRGB)
+{
+	// M matrix, for encoding
+	const float3x3 M = float3x3(0.2209, 0.3390, 0.4184, 0.1138, 0.6780, 0.7319, 0.0102, 0.1130, 0.2969);
+
+	float4 vResult;
+	float3 Xp_Y_XYZp = mul(vRGB, M);
+
+	Xp_Y_XYZp = max(Xp_Y_XYZp, float3(1e-6, 1e-6, 1e-6));
+	vResult.xy = Xp_Y_XYZp.xy / Xp_Y_XYZp.z;
+
+	float Le = 2.0 * log2(Xp_Y_XYZp.y) + 127.0;
+
+	vResult.w = frac(Le);
+	vResult.z = (Le - (floor(vResult.w * 255.0)) / 255.0) / 255.0;
+
+	return vResult;
+}
+
+float3 UnpackFromLogLuv(float4 vLogLuv)
+{
+	// Inverse M matrix, for decoding
+	const float3x3 InverseM = float3x3(6.0014, -2.7008, -1.7996, -1.3320, 3.1029, -5.7721, 0.3008, -1.0882, 5.6268);
+
+	float Le = vLogLuv.z * 255.0 + vLogLuv.w;
+	float3 Xp_Y_XYZp;
+
+	Xp_Y_XYZp.y = exp2((Le - 127.0) / 2.0);
+	Xp_Y_XYZp.z = Xp_Y_XYZp.y / vLogLuv.y;
+	Xp_Y_XYZp.x = vLogLuv.x * Xp_Y_XYZp.z;
+
+	float3 vRGB = mul(Xp_Y_XYZp, InverseM);
+
+	return max(vRGB, float3(0.0, 0.0, 0.0));
+}
+
+float4 PACK_RGBA32_Color16_Alpha0_HDR16(float4 color)
+{
+	return PackToLogLuv(color.rgb);
+}
+
+float4 UNPACK_RGBA32_Color16_Alpha0_HDR16(float4 color)
+{
+	return float4(UnpackFromLogLuv(color), 1);
+}
+
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color12_Alpha4_HDR16 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color12_Alpha4_HDR16 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color12_Alpha4_HDR16 ||||||||||||||||||||||||||||||||||||||
+
+float4 PACK_RGBA32_Color12_Alpha4_HDR16(float4 color)
+{
+    float4 encodedColor = EncodeRGBM(color.rgb);
+
+    float colorMultiplier = encodedColor.a;
+    float2 packed_16bit_colorMultiplier = PackFloatToR8G8(colorMultiplier);
+
+    uint R4 = encodedColor.r * BITS_4_MAX_VALUE;
+    uint G4 = encodedColor.g * BITS_4_MAX_VALUE;
+    uint B4 = encodedColor.b * BITS_4_MAX_VALUE;
+    uint A4 = saturate(color.a) * BITS_4_MAX_VALUE;
+
+    //mask the values (remove bits past 4)
+    R4 = R4 & BITS_4_MAX_VALUE;
+    G4 = G4 & BITS_4_MAX_VALUE;
+    B4 = B4 & BITS_4_MAX_VALUE;
+    A4 = A4 & BITS_4_MAX_VALUE;
+
+    //pack 2 4-bit integers into one 8 bit integer
+    uint packed_8bit_R4G4 = R4 | G4 << BITS_4;
+    uint packed_8bit_B4A4 = B4 | A4 << BITS_4;
+
+    float2 packed_16bit_R4G4B4A4 = uint2(packed_8bit_R4G4, packed_8bit_B4A4) / float(BITS_8_MAX_VALUE);
+
+    //normalize the packed 8 bit integers back to (0..1) and store into float
+    float4 finalColor = float4(packed_16bit_R4G4B4A4.x, packed_16bit_R4G4B4A4.y, packed_16bit_colorMultiplier.x, packed_16bit_colorMultiplier.y);
+
+    return finalColor;
+}
+
+float4 UNPACK_RGBA32_Color12_Alpha4_HDR16(float4 color)
+{
+    uint R4G4 = color.r * BITS_8_MAX_VALUE;
+    uint B4A4 = color.g * BITS_8_MAX_VALUE;
+
+    uint R4 = (R4G4 & BITS_4_MAX_VALUE) << BITS_4;
+    uint G4 = ((R4G4 >> BITS_4) & BITS_4_MAX_VALUE) << BITS_4;
+    uint B4 = (B4A4 & BITS_4_MAX_VALUE) << BITS_4;
+    uint A4 = ((B4A4 >> BITS_4) & BITS_4_MAX_VALUE) << BITS_4;
+
+    float alphaValue = A4 / float(BITS_8_MAX_VALUE);
+
+    float3 reconstructedRGB = float3(R4, G4, B4) / float(BITS_8_MAX_VALUE);
+    float unpacked_16bit_colorMultiplier = UnpackFloatFromR8G8(color.ba);
+
+    float4 reconstructedRGBM = float4(reconstructedRGB, unpacked_16bit_colorMultiplier);
+
+    float4 finalColor = float4(DecodeRGBM(reconstructedRGBM), alphaValue);
+
+    return finalColor;
+}
+
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color15_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color15_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color15_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+
+float4 PACK_RGBA32_Color15_Alpha1_HDR0(float4 color)
+{
+    color = saturate(color);
+    float3 hsv = RgbToHsv(color.rgb);
+
+    uint hue_8bits = hsv.r * BITS_8_MAX_VALUE;
+    uint saturation_4bits = hsv.g * BITS_4_MAX_VALUE;
+    uint alpha_4bits = saturate(color.a) * BITS_4_MAX_VALUE;
+
+    float2 luminance_16bits = PackFloatToR8G8(hsv.b);
+
+    //mask the values
+    saturation_4bits = saturation_4bits & BITS_4_MAX_VALUE;
+    alpha_4bits = alpha_4bits & BITS_4_MAX_VALUE;
+
+    //pack 2 4-bit integers into one 8 bit integer
+    uint combined_hue_alpha_8bits = saturation_4bits | alpha_4bits << BITS_4;
+
+    float packed_saturation_alpha_8bits = combined_hue_alpha_8bits / float(BITS_8_MAX_VALUE);
+    float packed_hue_8bits = hue_8bits / float(BITS_8_MAX_VALUE);
+
+    //normalize the packed 8 bit integers back to (0..1) and store into float
+    float4 finalColor = float4(packed_saturation_alpha_8bits, hsv.r, luminance_16bits.x, luminance_16bits.y);
+
+    return finalColor;
+}
+
+float4 UNPACK_RGBA32_Color15_Alpha1_HDR0(float4 color)
+{
+    uint packed_saturation_alpha_8bits = color.r * BITS_8_MAX_VALUE;
+
+    uint saturation_4bits = (packed_saturation_alpha_8bits & BITS_4_MAX_VALUE) << BITS_4;
+    uint alpha_4bits = ((packed_saturation_alpha_8bits >> BITS_4) & BITS_4_MAX_VALUE) << BITS_4;
+
+    float hue = color.g;
+    float alpha = alpha_4bits / float(BITS_8_MAX_VALUE);
+    float saturation = saturation_4bits / float(BITS_8_MAX_VALUE);
+    float luminance = UnpackFloatFromR8G8(color.ba);
+
+    //saturation value is off a bit? so correct for it
+    saturation *= (1 + (1.0f / BITS_4_MAX_VALUE) * 2);
+
+    float3 reconstructedHSV = float3(hue, saturation, luminance);
+
+    float3 colorRGB = HsvToRgb(reconstructedHSV);
+    //float3 colorRGB = HSVtoRGB(reconstructedHSV);
+
+    float4 finalColor = float4(colorRGB, alpha);
+
+    return finalColor;
+}
+
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color12_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color12_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color12_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+
+float4 PACK_RGBA32_Color12_Alpha1_HDR0(float4 color)
+{
+    color = saturate(color);
+
+    uint R4 = color.r * BITS_4_MAX_VALUE;
+    uint G4 = color.g * BITS_4_MAX_VALUE;
+    uint B4 = color.b * BITS_4_MAX_VALUE;
+    uint A1 = ceil(color.a);
+
+    //mask the values
+    R4 = R4 & BITS_4_MAX_VALUE;
+    G4 = G4 & BITS_4_MAX_VALUE;
+    B4 = B4 & BITS_4_MAX_VALUE;
+    A1 = A1 & BITS_1_MAX_VALUE;
+
+    uint R4G4 = R4 | G4 << BITS_4;
+    uint B4A1 = B4 | A1 << BITS_4;
+
+    float packed_R4G4 = R4G4 / float(BITS_8_MAX_VALUE);
+    float packed_B4A1 = B4A1 / float(BITS_8_MAX_VALUE);
+
+    //normalize the packed 8 bit integers back to (0..1) and store into float
+    float4 finalColor = float4(packed_R4G4, packed_B4A1, 0, 0);
+
+    return finalColor;
+}
+
+float4 UNPACK_RGBA32_Color12_Alpha1_HDR0(float4 color)
+{
+    uint R4G4 = color.r * BITS_8_MAX_VALUE;
+    uint B4A1 = color.g * BITS_8_MAX_VALUE;
+
+    uint R4 = BitFieldExtract(R4G4, 0u, 4u) << BITS_4;
+    uint G4 = BitFieldExtract(R4G4, 4u, 4u) << BITS_4;
+    uint B4 = BitFieldExtract(B4A1, 0u, 4u) << BITS_4;
+    uint A1 = BitFieldExtract(B4A1, 4u, 1u) << BITS_8;
+
+    float alphaValue = A1 / float(BITS_8_MAX_VALUE);
+
+    float3 reconstructedRGB = float3(R4, G4, B4) / float(BITS_8_MAX_VALUE);
+
+    float4 finalColor = float4(reconstructedRGB, alphaValue);
+
+    return finalColor;
+}
+
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color15_Alpha1_HDR16 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color15_Alpha1_HDR16 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color15_Alpha1_HDR16 ||||||||||||||||||||||||||||||||||||||
+
+float4 PACK_RGBA32_Color15_Alpha1_HDR16(float4 color)
+{
+    float4 encodedColor = EncodeRGBM(color.rgb);
+
+    float colorMultiplier = encodedColor.a;
+    float2 packed_16bit_colorMultiplier = PackFloatToR8G8(colorMultiplier);
+
+    uint R5 = encodedColor.r * BITS_5_MAX_VALUE;
+    uint G5 = encodedColor.g * BITS_5_MAX_VALUE;
+    uint B5 = encodedColor.b * BITS_5_MAX_VALUE;
+    uint A1 = ceil(color.a);
+
+    //mask the values (remove bits past 4)
+    R5 = R5 & BITS_5_MAX_VALUE;
+    G5 = G5 & BITS_5_MAX_VALUE;
+    B5 = B5 & BITS_5_MAX_VALUE;
+    A1 = A1;
+
+    //pack 2 4-bit integers into one 8 bit integer
+    //uint packed_8bit_R5G3 = (R5 & BITS_5_MAX_VALUE) | (G5 & BITS_3_MAX_VALUE) << BITS_5;
+    uint packed_8bit_R5G3 = R5 | BitFieldExtract(G5, 0u, 3u) << BITS_5;
+    uint packed_8bit_G2B5A1 = BitFieldExtract(G5, 3u, 2u) | B5 << BITS_2 | A1 << BITS_7;
+
+    float2 packed_16bit_R5G5B5A1 = uint2(packed_8bit_R5G3, packed_8bit_G2B5A1) / float(BITS_8_MAX_VALUE);
+
+    //normalize the packed 8 bit integers back to (0..1) and store into float
+    float4 finalColor = float4(packed_16bit_R5G5B5A1.x, packed_16bit_R5G5B5A1.y, packed_16bit_colorMultiplier.x, packed_16bit_colorMultiplier.y);
+
+    return finalColor;
+}
+
+float4 UNPACK_RGBA32_Color15_Alpha1_HDR16(float4 color)
+{
+    uint R5G3 = (color.r * BITS_8_MAX_VALUE);
+    uint G2B5A1 = (color.g * BITS_8_MAX_VALUE);
+
+    uint R5 = BitFieldExtract(R5G3, 0u, 5u) << BITS_3;
+    uint G5 = (BitFieldExtract(R5G3, 5u, 3u) | BitFieldExtract(G2B5A1, 0u, 2u) << BITS_3) << BITS_3;
+    uint B5 = BitFieldExtract(G2B5A1, 2u, 5u) << BITS_3;
+    uint A1 = BitFieldExtract(G2B5A1, 7u, 1u) << BITS_8;
+
+    float alphaValue = A1 / float(BITS_8_MAX_VALUE);
+
+    float3 reconstructedRGB = float3(R5, G5, B5) / float(BITS_8_MAX_VALUE);
+    float unpacked_16bit_colorMultiplier = UnpackFloatFromR8G8(color.ba);
+
+    float4 reconstructedRGBM = float4(reconstructedRGB, unpacked_16bit_colorMultiplier);
+
+    float4 finalColor = float4(DecodeRGBM(reconstructedRGBM), alphaValue);
+
+    return finalColor;
+}
+
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color9_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color9_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| RGBA32_Color9_Alpha1_HDR0 ||||||||||||||||||||||||||||||||||||||
+
+float4 PACK_RGBA32_Color9_Alpha1_HDR0(float4 color)
+{
+    color = saturate(color);
+
+    uint R3 = color.r * BITS_3_MAX_VALUE;
+    uint G3 = color.g * BITS_3_MAX_VALUE;
+    uint B3 = color.b * BITS_3_MAX_VALUE;
+    uint A1 = ceil(color.a);
+
+    //mask the values
+    R3 = R3 & BITS_3_MAX_VALUE;
+    G3 = G3 & BITS_3_MAX_VALUE;
+    B3 = B3 & BITS_3_MAX_VALUE;
+    A1 = A1 & BITS_1_MAX_VALUE;
+
+    uint R3G3 = R3 | G3 << BITS_3;
+    uint B3A1 = B3 | A1 << BITS_3;
+
+    float packed_R3G3 = R3G3 / float(BITS_8_MAX_VALUE);
+    float packed_B3A1 = B3A1 / float(BITS_8_MAX_VALUE);
+
+    //normalize the packed 8 bit integers back to (0..1) and store into float
+    float4 finalColor = float4(packed_R3G3, packed_B3A1, 0, 0);
+
+    return finalColor;
+}
+
+float4 UNPACK_RGBA32_Color9_Alpha1_HDR0(float4 color)
+{
+    uint R3G3 = color.r * BITS_8_MAX_VALUE;
+    uint B3A1 = color.g * BITS_8_MAX_VALUE;
+
+    uint R3 = BitFieldExtract(R3G3, 0u, 3u) << BITS_5;
+    uint G3 = BitFieldExtract(R3G3, 3u, 3u) << BITS_5;
+    uint B3 = BitFieldExtract(B3A1, 0u, 3u) << BITS_5;
+    uint A1 = BitFieldExtract(B3A1, 3u, 1u) << BITS_8;
+
+    float4 finalColor = float4(R3, G3, B3, A1) / float(BITS_8_MAX_VALUE);
+
+    return finalColor;
+}

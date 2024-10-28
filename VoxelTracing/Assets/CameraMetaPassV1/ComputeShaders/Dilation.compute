@@ -1,0 +1,52 @@
+#define THREAD_GROUP_SIZE_X 8
+#define THREAD_GROUP_SIZE_Y 8
+#define THREAD_GROUP_SIZE_Z 8
+
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
+
+RWTexture2D<float4> Write;
+float2 WriteTextureSize;
+
+int KernelSize;
+
+//|||||||||||||||||||||||||||||||||||||| FUNCTION ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| FUNCTION ||||||||||||||||||||||||||||||||||||||
+//|||||||||||||||||||||||||||||||||||||| FUNCTION ||||||||||||||||||||||||||||||||||||||
+
+float4 Dilate2D(uint2 uv)
+{
+    uint offset = 1;
+    int index = 0;
+
+    //while we are currently in alpha
+    while (!(Write[uv].a > 0.0) && index < KernelSize)
+    {
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(0, offset)]; //up
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(0, -offset)]; //down
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(offset, 0)]; //right
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(-offset, 0)]; //left
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(-offset, -offset)]; //diagonal left down
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(-offset, offset)]; //diagonal left up
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(offset, offset)]; //diagonal right up
+        Write[uv] = Write[uv].a > 0.0 ? Write[uv] : Write[uv + uint2(offset, -offset)]; //diagonal right down
+
+        index++;
+    }
+
+    return Write[uv];
+}
+
+//||||||||||||||||||||||||||||| ComputeShader_Dilation |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_Dilation |||||||||||||||||||||||||||||
+//||||||||||||||||||||||||||||| ComputeShader_Dilation |||||||||||||||||||||||||||||
+
+#pragma kernel ComputeShader_Dilation
+[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+void ComputeShader_Dilation(uint3 id : SV_DispatchThreadID)
+{
+    float4 originalColor = Write[id.xy];
+
+    Write[id.xy] = float4(Dilate2D(id.xy).rgb, originalColor.a);
+}

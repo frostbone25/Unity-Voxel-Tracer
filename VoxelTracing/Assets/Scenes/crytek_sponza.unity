@@ -321,6 +321,7 @@ GameObject:
   - component: {fileID: 496284636}
   - component: {fileID: 496284635}
   - component: {fileID: 496284638}
+  - component: {fileID: 496284639}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -386,8 +387,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 496284634}
-  m_LocalRotation: {x: -0.020326246, y: -0.8521719, z: 0.03327029, w: -0.52180743}
-  m_LocalPosition: {x: -66.59522, y: 28.293602, z: 18.469467}
+  m_LocalRotation: {x: -0.07548202, y: -0.6135869, z: -0.059072, w: 0.7837884}
+  m_LocalPosition: {x: 68.904106, y: 2.8534756, z: -11.175355}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -453,6 +454,31 @@ MonoBehaviour:
   m_BeforeTransparentBundles: []
   m_BeforeStackBundles: []
   m_AfterStackBundles: []
+--- !u!114 &496284639
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 496284634}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  resolution: {x: 1920, y: 1080}
+  texelDensityPerUnit: 4
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 512
+  colorDilationPixelSize: 128
+  alphaDilationPixelSize: 1
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
 --- !u!1 &570566907
 GameObject:
   m_ObjectHideFlags: 0
@@ -470,7 +496,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &570566908
 Transform:
   m_ObjectHideFlags: 0
@@ -631,7 +657,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1013582311
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -769,12 +795,12 @@ GameObject:
   - component: {fileID: 1086677850}
   - component: {fileID: 1086677849}
   m_Layer: 0
-  m_Name: Sphere
+  m_Name: Fog
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!135 &1086677849
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -861,13 +887,17 @@ GameObject:
   m_Component:
   - component: {fileID: 1425651869}
   - component: {fileID: 1425651868}
+  - component: {fileID: 1425651871}
+  - component: {fileID: 1425651872}
+  - component: {fileID: 1425651873}
+  - component: {fileID: 1425651870}
   m_Layer: 0
   m_Name: Voxelizer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1425651868
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -923,6 +953,95 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1425651870
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a01d90420281fa4bad525dee11c4891, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 189, y: 79.3, z: 116.5}
+  voxelDensitySize: 1
+  texelDensityPerUnit: 1
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 128
+  doubleSidedGeometry: 1
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  onlyUseMeshesWithinBounds: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  previewBounds: 0
+--- !u!114 &1425651871
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b6a749e6f67ceee459c46baf9b9fc3f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 189, y: 79.3, z: 116.5}
+  voxelDensitySize: 1
+  previewBounds: 0
+--- !u!114 &1425651872
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e51b593fb14e45041954931db6c02a50, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 189, y: 79.3, z: 116.5}
+  voxelDensitySize: 1
+  doubleSidedGeometry: 1
+  previewBounds: 0
+--- !u!114 &1425651873
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 05e891dcb28723b4fb65539bbfd3bd65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 189, y: 79.3, z: 116.5}
+  voxelDensitySize: 1
+  texelDensityPerUnit: 4
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 128
+  doubleSidedGeometry: 1
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  onlyUseMeshesWithinBounds: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  previewBounds: 1
 --- !u!1001 &1453591158
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2541,10 +2660,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  resolution: {x: 1920, y: 1080}
   texelDensityPerUnit: 2
-  minimumResolution: 16
-  onlyIncludeGIContributors: 1
-  camera: {fileID: 496284636}
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 128
+  colorDilationPixelSize: 128
+  alphaDilationPixelSize: 1
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
 --- !u!1 &1521843088
 GameObject:
   m_ObjectHideFlags: 0

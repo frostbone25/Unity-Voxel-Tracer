@@ -26,6 +26,7 @@
 //|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
 
 #pragma multi_compile_local _ NORMAL_ORIENTED_HEMISPHERE_SAMPLING
+#pragma multi_compile_local _ MULTIPLY_ALBEDO
 
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
@@ -117,8 +118,11 @@ void ComputeShader_TraceSurfaceEnvironmentLight(uint3 id : SV_DispatchThreadID)
                 float3 environmentLightSample = TEXCUBE_SHARP(EnvironmentMap, vector_environmentRayDirection).rgb * EnvironmentIntensity;
                 float localNdotL = max(0.0, dot(sceneNormal, vector_environmentRayDirection));
                 environmentLightSample *= localNdotL;
-                //environmentLightSample *= sceneAlbedo.rgb * AlbedoBoost;
-                environmentLightSample *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
+                
+                #if defined (MULTIPLY_ALBEDO)
+                    //environmentLightSample *= sceneAlbedo.rgb * AlbedoBoost;
+                    environmentLightSample *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
+                #endif
 
                 finalColor.rgb += environmentLightSample;
 

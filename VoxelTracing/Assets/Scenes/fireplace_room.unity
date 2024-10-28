@@ -330,7 +330,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &285442595
 Transform:
   m_ObjectHideFlags: 0
@@ -3559,7 +3559,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1377972530
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3575,6 +3575,9 @@ MonoBehaviour:
   voxelName: FireplaceRoom
   voxelSize: {x: 57.6, y: 33, z: 46}
   voxelDensitySize: 0.3
+  texelDensityPerUnit: 1
+  minimumBufferResolution: 16
+  onlyIncludeGIContributors: 1
   enableEnvironmentLighting: 0
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
@@ -5409,7 +5412,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  camera: {fileID: 963194227}
+  texelDensityPerUnit: 1
+  minimumResolution: 16
+  onlyIncludeGIContributors: 1
 --- !u!1 &1853129487
 GameObject:
   m_ObjectHideFlags: 0

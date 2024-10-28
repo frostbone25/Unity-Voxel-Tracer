@@ -32,6 +32,7 @@ Shader "Unlit/ObjectShader"
         _VolumeSize("Volume World Size", Vector) = (0, 0, 0, 0)
         _MipLevel("Mip Level", Float) = 0
         _NormalOffset("Normal Offset", Float) = 0
+        _Exposure("Exposure", Float) = 1
 
         [Header(Comparison)]
         [Toggle(COMPARE_TO_LIGHTMAP)] _CompareToLightmap("Compare To Lightmap", Float) = 1
@@ -97,6 +98,7 @@ Shader "Unlit/ObjectShader"
             float4 _MainTex_ST;         //(X = Tiling X | Y = Tiling Y | Z = Offset X | W = Offset Y)
             float4 _MainTex_TexelSize;  //(X = 1 / Width | Y = 1 / Height | Z = Width | W = Height)
 
+            float _Exposure;
             float _NormalOffset;
             float _MipLevel;
             float4 _VolumePos;
@@ -201,7 +203,7 @@ Shader "Unlit/ObjectShader"
                     float3 normalizedVolumeCoordinates = (((vector_worldPosition + (vector_normalDirection *_NormalOffset)) + (_VolumeSize / 2.0f)) - _VolumePos) / _VolumeSize;
                     float4 volumetricLightmap = tex3Dlod(_VolumeTexture, float4(normalizedVolumeCoordinates.xyz, _MipLevel));
 
-                    finalColor.rgb += volumetricLightmap.rgb;
+                    finalColor.rgb += volumetricLightmap.rgb * _Exposure;
                 #endif
 
                 //||||||||||||||||||||||||||||||| ALBEDO |||||||||||||||||||||||||||||||
