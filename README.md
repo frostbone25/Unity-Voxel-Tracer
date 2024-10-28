@@ -55,7 +55,7 @@ Work in progress voxel tracer. This is intended to be an offline solution for ge
 
 ### Why?
 
-This tool came about with the need to make the [Baked Volumetrics](https://github.com/frostbone25/Unity-Baked-Volumetrics) effect no longer dependent on sampling from light probes in a scene. So building a voxel based raytracer was necessary, and here we are. It's worth noting that this tool serves as a foundation for potentially more things to come in the future *(Real-time Voxel Based GI, Voxel Based Specular Reflections, Voxel Lightmaps, Scene To Voxel Mesh, etc.)*
+This tool came about with the need to make the [Baked Volumetrics](https://github.com/frostbone25/Unity-Baked-Volumetrics) effect no longer dependent on sampling from light probes in a scene. So building a voxel-based raytracer was necessary, and here we are. The raytracer is implemented all with Compute Shaders *(NO RAYTRACING HARDWARE UTILIZED)*, so as long as the hardware supports compute shaders *(most hardware now does)* it should work on any GPU regardless of vendor which is the goal. It's worth noting that this tool serves as a foundation for potentially more things to come in the future *(Real-time Voxel Based GI, Voxel Based Specular Reflections, Voxel Lightmaps, Scene To Voxel Mesh, etc.)*
 
 # Sources / References / Credits
 - **[pema99](https://gist.github.com/pema99)**: Helped fix a big issue regarding TDR and GPU Readbacks for better baking stability, as well as additional advice and tips. *(Thank you!)*
