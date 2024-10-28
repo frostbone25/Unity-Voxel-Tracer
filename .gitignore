@@ -35,7 +35,23 @@ VoxelTracing/[Aa]ssets/VoxelTracing/Data
 VoxelTracing/[Aa]ssets/VoxelTracing/Data/
 VoxelTracing/Screenshots/
 
+VoxelTracing/Assets/CameraMetaPassV1/Data
+VoxelTracing/Assets/CameraMetaPassV1/Data/
 
+VoxelTracing/Assets/CameraMetaPassV2/Data
+VoxelTracing/Assets/CameraMetaPassV2/Data/
+
+VoxelTracing/Assets/SceneVoxelizerV1/Data
+VoxelTracing/Assets/SceneVoxelizerV1/Data/
+
+VoxelTracing/Assets/SceneVoxelizerV2/Data
+VoxelTracing/Assets/SceneVoxelizerV2/Data/
+
+VoxelTracing/Assets/SceneVoxelizerV3/Data
+VoxelTracing/Assets/SceneVoxelizerV3/Data/
+
+VoxelTracing/Assets/SceneVoxelizerV4/Data
+VoxelTracing/Assets/SceneVoxelizerV4/Data/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
