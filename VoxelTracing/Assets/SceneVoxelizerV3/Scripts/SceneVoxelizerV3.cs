@@ -14,6 +14,7 @@ using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using RenderTextureConverting;
+using UnityEngine.Experimental.Rendering;
 
 /*
  * NOTE 1: The Anti-Aliasing when used for the generation of the voxels does help maintain geometry at low resolutions, however there is a quirk because it also samples the background color.
@@ -80,7 +81,35 @@ namespace SceneVoxelizer3
         //SMALLER VALUES: smaller dilation radius | worse dilation quality/accuracy
         public int dilationPixelSize = 128;
 
+        //this controls whether bilinear filtering is used for the final generated meta textures.
+        //this can soften details/sharpness for textures but this could also potentially help with artifacting.
+        //ENABLED: This will enable bilinear filtering on meta textures
+        //DISABLED: This will enable bilinear filtering on meta textures
+        public bool useBilinearFiltering = false;
+
         [Header("Rendering")]
+        //this will perform blending with multiple captured voxel slices of the scene albedo buffer
+        //the scene is captured in multiple slices in 6 different axis's, "overdraw" happens for alot of pixels.
+        //so during voxelization if a pixel already has data written, we write again but blend with the original result, in theory this should lead to better accuracy of the buffer because each slice depending on the axis is not the exact same every time.
+        //ENABLED: averages multiple slices if there is overdraw of pixels, potentially better accuracy.
+        //DISABLED: on each slice, only the first instance of the color is written, if the same pixel is drawn then it's ignored.
+        public bool blendAlbedoVoxelSlices = false;
+
+        //this will perform blending with multiple captured voxel slices of the scene albedo buffer
+        //the scene is captured in multiple slices in 6 different axis's, "overdraw" happens for alot of pixels.
+        //so during voxelization if a pixel already has data written, we write again but blend with the original result, in theory this should lead to better accuracy of the buffer because each slice depending on the axis is not the exact same every time.
+        //ENABLED: averages multiple slices if there is overdraw of pixels, potentially better accuracy.
+        //DISABLED: on each slice, only the first instance of the color is written, if the same pixel is drawn then it's ignored.
+        //NOTE: This could lead to inaccuracy on some surfaces and could create skewed results since some surfaces depending on how they are captured, will have their vectors altered.
+        public bool blendEmissiveVoxelSlices = false;
+
+        //this will perform blending with multiple captured voxel slices of the scene albedo buffer
+        //the scene is captured in multiple slices in 6 different axis's, "overdraw" happens for alot of pixels.
+        //so during voxelization if a pixel already has data written, we write again but blend with the original result, in theory this should lead to better accuracy of the buffer because each slice depending on the axis is not the exact same every time.
+        //ENABLED: averages multiple slices if there is overdraw of pixels, potentially better accuracy.
+        //DISABLED: on each slice, only the first instance of the color is written, if the same pixel is drawn then it's ignored.
+        public bool blendNormalVoxelSlices = false;
+
         //this determines whether or not geometry in the scene can be seen from both sides.
         //this is on by default because its good at thickening geometry in the scene and reducing holes/cracks.
         //ENABLED: scene is voxelized with geometry visible on all sides with no culling.
@@ -124,48 +153,45 @@ namespace SceneVoxelizer3
         private static int THREAD_GROUP_SIZE_Y = 8;
         private static int THREAD_GROUP_SIZE_Z = 8;
 
+        private Vector3Int voxelResolution => new Vector3Int((int)(voxelSize.x / voxelDensitySize), (int)(voxelSize.y / voxelDensitySize), (int)(voxelSize.z / voxelDensitySize));
         private Bounds voxelBounds => new Bounds(transform.position, voxelSize);
-
-        private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
 
         private string localAssetFolder = "Assets/SceneVoxelizerV3";
         private string localAssetComputeFolder = "Assets/SceneVoxelizerV3/ComputeShaders";
         private string localAssetDataFolder = "Assets/SceneVoxelizerV3/Data";
-
-        private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
-
-        private GameObject voxelCameraGameObject;
-        private Camera voxelCamera;
-
-        private Vector3Int voxelResolution => new Vector3Int((int)(voxelSize.x / voxelDensitySize), (int)(voxelSize.y / voxelDensitySize), (int)(voxelSize.z / voxelDensitySize));
-
-        private ComputeShader voxelizeScene;
-        private ComputeShader dilate;
-
-        private Shader voxelBufferMeta => Shader.Find("SceneVoxelizerV3/VoxelBufferMeta");
-        private Shader voxelBufferMetaNormal => Shader.Find("SceneVoxelizerV3/VoxelBufferMetaNormal");
         private string voxelizeSceneAssetPath => localAssetComputeFolder + "/VoxelizeScene.compute";
         private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
+        private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
+        private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
 
-        private static RenderTextureFormat metaAlbedoFormat = RenderTextureFormat.ARGB32;
+        private ComputeShader voxelizeScene => AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelizeSceneAssetPath);
+        private ComputeShader dilate => AssetDatabase.LoadAssetAtPath<ComputeShader>(dilateAssetPath);
+        private Shader voxelBufferMeta => Shader.Find("SceneVoxelizerV3/VoxelBufferMeta");
+        private Shader voxelBufferMetaNormal => Shader.Find("SceneVoxelizerV3/VoxelBufferMetaNormal");
+
+        private static RenderTextureFormat metaAlbedoFormat = RenderTextureFormat.ARGB4444;
         private static RenderTextureFormat metaEmissiveFormat = RenderTextureFormat.ARGBHalf;
         private static RenderTextureFormat metaNormalFormat = RenderTextureFormat.ARGB32;
         private static RenderTextureFormat voxelBufferFormat = RenderTextureFormat.ARGBHalf;
 
-        private static TextureFormat voxelAlbedoBufferFormat = TextureFormat.ARGB32;
-        private static TextureFormat voxelEmissiveBufferFormat = TextureFormat.RGBA64;
-        private static TextureFormat voxelNormalBufferFormat = TextureFormat.ARGB32;
+        private static TextureFormat voxelAlbedoBufferFormat = TextureFormat.RGBA32;
+        private static TextureFormat voxelEmissiveBufferFormat = TextureFormat.RGBAHalf;
+        private static TextureFormat voxelNormalBufferFormat = TextureFormat.RGBA32;
+
+        private static TextureWrapMode metaTextureWrapMode = TextureWrapMode.Clamp;
+
+        private FilterMode metaTextureFilterMode => useBilinearFiltering ? FilterMode.Bilinear : FilterMode.Point;
 
         private RenderTextureConverterV2 renderTextureConverterV2 => new RenderTextureConverterV2();
+
+        private GameObject voxelCameraGameObject;
+        private Camera voxelCamera;
 
         /// <summary>
         /// Load in necessary resources for the voxel tracer.
         /// </summary>
-        private bool GetResources()
+        private bool HasResources()
         {
-            voxelizeScene = AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelizeSceneAssetPath);
-            dilate = AssetDatabase.LoadAssetAtPath<ComputeShader>(dilateAssetPath);
-
             if (voxelizeScene == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelizeSceneAssetPath));
@@ -232,7 +258,7 @@ namespace SceneVoxelizer3
             voxelCamera.orthographic = true;
             voxelCamera.nearClipPlane = 0.0f;
             voxelCamera.farClipPlane = voxelDensitySize;
-            voxelCamera.clearFlags = CameraClearFlags.Color;
+            voxelCamera.clearFlags = CameraClearFlags.SolidColor;
             voxelCamera.backgroundColor = new Color(0, 0, 0, 0);
             voxelCamera.depthTextureMode = DepthTextureMode.None;
             voxelCamera.renderingPath = RenderingPath.Forward;
@@ -274,7 +300,7 @@ namespace SceneVoxelizer3
             //NOTE TO SELF: Keep render texture format high precision.
             //For instance changing it to an 8 bit for the albedo buffer seems to kills color definition.
 
-            GenerateAlbedoEmissiveBuffers();
+            GenerateAlbedoEmissiveNormalBuffers();
 
             Debug.Log(string.Format("Generating Albedo / Emissive / Normal buffers took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
         }
@@ -295,6 +321,9 @@ namespace SceneVoxelizer3
             MaterialPropertyBlock materialPropertyBlock = new MaterialPropertyBlock();
             materialPropertyBlock.SetVector(ShaderIDs.unity_LightmapST, new Vector4(1, 1, 0, 0)); //cancel out any lightmap UV scaling/offsets.
 
+            //get camera frustum planes
+            Plane[] cameraFrustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
+
             //iterate through each object we collected
             for (int i = 0; i < objectsMetaData.Count; i++)
             {
@@ -303,9 +332,6 @@ namespace SceneVoxelizer3
                 //(IF ENABLED) calculate camera frustum culling during this instance of rendering
                 if(useBoundingBoxCullingForRendering)
                 {
-                    //get camera frustum planes
-                    Plane[] cameraFrustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
-
                     //test the extracted object bounds against the planes, if the object is NOT within the camera frustum planes...
                     if (!GeometryUtility.TestPlanesAABB(cameraFrustumPlanes, objectMetaData.bounds))
                         continue; //then continue to the next object to render, no reason to keep fucking around with it because we won't see it
@@ -472,14 +498,14 @@ namespace SceneVoxelizer3
                                 //the unity meta pass basically unwraps the UV1 (Lightmap UVs) to the screen.
 
                                 //create our albedo render texture buffer
-                                RenderTexture meshAlbedoBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaAlbedoFormat);
-                                meshAlbedoBuffer.wrapMode = TextureWrapMode.Clamp;
-                                meshAlbedoBuffer.filterMode = FilterMode.Point;
-                                meshAlbedoBuffer.enableRandomWrite = true; //important
-                                meshAlbedoBuffer.Create();
+                                materialMetaData.albedoBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaAlbedoFormat);
+                                materialMetaData.albedoBuffer.wrapMode = metaTextureWrapMode;
+                                materialMetaData.albedoBuffer.filterMode = metaTextureFilterMode;
+                                materialMetaData.albedoBuffer.enableRandomWrite = true; //important
+                                materialMetaData.albedoBuffer.Create();
 
                                 //put our render texture to use.
-                                metaDataCommandBuffer.SetRenderTarget(meshAlbedoBuffer);
+                                metaDataCommandBuffer.SetRenderTarget(materialMetaData.albedoBuffer);
 
                                 //show only the albedo colors in the meta pass.
                                 materialPropertyBlock.SetVector(ShaderIDs.unity_MetaFragmentControl, new Vector4(1, 0, 0, 0)); //Show Albedo
@@ -500,7 +526,7 @@ namespace SceneVoxelizer3
                                 if(performDilation)
                                 {
                                     //reuse the same buffer, the compute shader will modify the values of this render target.
-                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, meshAlbedoBuffer);
+                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, materialMetaData.albedoBuffer);
 
                                     //let the GPU perform dilation
                                     dilate.Dispatch(ComputeShader_Dilation2D, Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_Y), 1);
@@ -513,14 +539,14 @@ namespace SceneVoxelizer3
                                 //the unity meta pass basically unwraps the UV1 (Lightmap UVs) to the screen.
 
                                 //create our emissive render texture buffer
-                                RenderTexture meshEmissiveBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaEmissiveFormat);
-                                meshEmissiveBuffer.wrapMode = TextureWrapMode.Clamp;
-                                meshEmissiveBuffer.filterMode = FilterMode.Point;
-                                meshEmissiveBuffer.enableRandomWrite = true;
-                                meshEmissiveBuffer.Create();
+                                materialMetaData.emissiveBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaEmissiveFormat);
+                                materialMetaData.emissiveBuffer.wrapMode = metaTextureWrapMode;
+                                materialMetaData.emissiveBuffer.filterMode = metaTextureFilterMode;
+                                materialMetaData.emissiveBuffer.enableRandomWrite = true;
+                                materialMetaData.emissiveBuffer.Create();
 
                                 //put our render texture to use.
-                                metaDataCommandBuffer.SetRenderTarget(meshEmissiveBuffer);
+                                metaDataCommandBuffer.SetRenderTarget(materialMetaData.emissiveBuffer);
 
                                 //show only the emissive colors in the meta pass.
                                 materialPropertyBlock.SetVector(ShaderIDs.unity_MetaFragmentControl, new Vector4(0, 1, 0, 0)); //Show Emission
@@ -541,7 +567,7 @@ namespace SceneVoxelizer3
                                 if (performDilation)
                                 {
                                     //reuse the same buffer, the compute shader will modify the values of this render target.
-                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, meshEmissiveBuffer);
+                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, materialMetaData.emissiveBuffer);
 
                                     //let the GPU perform dilation
                                     dilate.Dispatch(ComputeShader_Dilation2D, Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_Y), 1);
@@ -553,13 +579,13 @@ namespace SceneVoxelizer3
                                 //here we will render the normal buffer of the object.
                                 //the unity meta pass basically unwraps the UV1 (Lightmap UVs) to the screen.
 
-                                RenderTexture meshNormalBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaNormalFormat);
-                                meshNormalBuffer.wrapMode = TextureWrapMode.Clamp;
-                                meshNormalBuffer.filterMode = FilterMode.Point;
-                                meshNormalBuffer.enableRandomWrite = true;
-                                meshNormalBuffer.Create();
+                                materialMetaData.normalBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaNormalFormat);
+                                materialMetaData.normalBuffer.wrapMode = metaTextureWrapMode;
+                                materialMetaData.normalBuffer.filterMode = metaTextureFilterMode;
+                                materialMetaData.normalBuffer.enableRandomWrite = true;
+                                materialMetaData.normalBuffer.Create();
 
-                                metaDataCommandBuffer.SetRenderTarget(meshNormalBuffer);
+                                metaDataCommandBuffer.SetRenderTarget(materialMetaData.normalBuffer);
 
                                 metaDataCommandBuffer.DrawMesh(mesh, Matrix4x4.identity, meshNormalMaterial, submeshIndex, 0, null);
 
@@ -575,19 +601,11 @@ namespace SceneVoxelizer3
                                 if (performDilation)
                                 {
                                     //reuse the same buffer, the compute shader will modify the values of this render target.
-                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, meshNormalBuffer);
+                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, materialMetaData.normalBuffer);
 
                                     //let the GPU perform dilation
                                     dilate.Dispatch(ComputeShader_Dilation2D, Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_Y), 1);
                                 }
-
-                                //|||||||||||||||||||||||||||||||||||||| META MATERIAL FINALIZE ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| META MATERIAL FINALIZE ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| META MATERIAL FINALIZE ||||||||||||||||||||||||||||||||||||||
-
-                                materialMetaData.albedoBuffer = meshAlbedoBuffer;
-                                materialMetaData.emissiveBuffer = meshEmissiveBuffer;
-                                materialMetaData.normalBuffer = meshNormalBuffer;
                             }
 
                             //after rendering both the albedo/emissive lets store the results into our object meta data for the current material that we rendered.
@@ -610,21 +628,8 @@ namespace SceneVoxelizer3
 
             for (int i = 0; i < objectsMetaData.Count; i++)
             {
-                ObjectMetaData objectMetaData = objectsMetaData[i];
-
-                if (objectMetaData.materials != null)
-                {
-                    for (int j = 0; j < objectMetaData.materials.Length; j++)
-                    {
-                        if (objectMetaData.materials[j].isEmpty() == false)
-                        {
-                            memorySize += Profiler.GetRuntimeMemorySizeLong(objectMetaData.materials[j].albedoBuffer);
-                            memorySize += Profiler.GetRuntimeMemorySizeLong(objectMetaData.materials[j].emissiveBuffer);
-                            memorySize += Profiler.GetRuntimeMemorySizeLong(objectMetaData.materials[j].normalBuffer);
-                            textures += 3;
-                        }
-                    }
-                }
+                memorySize += objectsMetaData[i].GetDebugMemorySize();
+                textures += (uint)(objectsMetaData[i].materials.Length * 3);
             }
 
             Debug.Log(string.Format("Meta Pass Extraction took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
@@ -640,16 +645,14 @@ namespace SceneVoxelizer3
         /// <param name="filename"></param>
         /// <param name="rtFormat"></param>
         /// <param name="texFormat"></param>
-        [ContextMenu("GenerateAlbedoEmissiveBuffers")]
-        public void GenerateAlbedoEmissiveBuffers()
+        [ContextMenu("GenerateAlbedoEmissiveNormalBuffers")]
+        public void GenerateAlbedoEmissiveNormalBuffers()
         {
             UpdateProgressBar("Preparing to generate albedo/emissive/normal...", 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
 
-            bool getResourcesResult = GetResources(); //Get all of our compute shaders ready.
-
-            if (getResourcesResult == false)
+            if (HasResources() == false)
                 return; //if both resource gathering functions returned false, that means something failed so don't continue
 
             SetupAssetFolders(); //Setup a local "scene" folder in our local asset directory if it doesn't already exist.
@@ -673,7 +676,13 @@ namespace SceneVoxelizer3
             float zOffset = voxelSize.z / voxelResolution.z;
 
             //pre-fetch our voxelize kernel function in the compute shader.
-            int ComputeShader_VoxelizeScene = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene");
+            int ComputeShader_VoxelizeScene_X_POS = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_X_POS");
+            int ComputeShader_VoxelizeScene_X_NEG = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_X_NEG");
+            int ComputeShader_VoxelizeScene_Y_POS = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Y_POS");
+            int ComputeShader_VoxelizeScene_Y_NEG = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Y_NEG");
+            int ComputeShader_VoxelizeScene_Z_POS = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Z_POS");
+            int ComputeShader_VoxelizeScene_Z_NEG = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Z_NEG");
+            int ComputeShader_ClearTexture3D = voxelizeScene.FindKernel("ComputeShader_ClearTexture3D");
 
             //make sure the voxelize shader knows our voxel resolution beforehand.
             voxelizeScene.SetVector(ShaderIDs.VolumeResolution, new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
@@ -690,23 +699,6 @@ namespace SceneVoxelizer3
             Material objectMaterial = new Material(voxelBufferMeta);
             objectMaterial.SetInt("_CullMode", doubleSidedGeometry ? (int)CullMode.Off : (int)CullMode.Back);
 
-            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
-            //disable all keywords
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
-            //assign the 
-            voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-
-            //run the compute shader once, which will make all pixels float4(0, 0, 0, 0) to clean things up.
-            voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
-
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -717,6 +709,26 @@ namespace SceneVoxelizer3
                 for(int j = 0; j < 3; j++)
                 {
                     float timeBeforeRendering = Time.realtimeSinceStartup;
+
+                    switch (j)
+                    {
+                        case 0:
+                            SetComputeKeyword(voxelizeScene, "BLEND_SLICES", blendAlbedoVoxelSlices);
+                            break;
+                        case 1:
+                            SetComputeKeyword(voxelizeScene, "BLEND_SLICES", blendEmissiveVoxelSlices);
+                            break;
+                        case 2:
+                            SetComputeKeyword(voxelizeScene, "BLEND_SLICES", blendNormalVoxelSlices);
+                            break;
+                    }
+
+                    //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
+                    //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
+                    //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
+
+                    voxelizeScene.SetTexture(ComputeShader_ClearTexture3D, ShaderIDs.Write, combinedSceneVoxel);
+                    voxelizeScene.Dispatch(ComputeShader_ClearTexture3D, voxelResolution.x, voxelResolution.y, voxelResolution.z);
 
                     //create a 2D render texture based off our voxel resolution to capture the scene in the X axis.
                     RenderTexture voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, renderTextureDepthBits, voxelBufferFormat);
@@ -732,15 +744,6 @@ namespace SceneVoxelizer3
                     //orient the voxel camera to face the positive X axis.
                     voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 90.0f, 0);
 
-                    //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-                    //this is important as each axis requires some specific swizzling so that it shows up correctly.
-                    SetComputeKeyword(voxelizeScene, "X_POS", true);
-                    SetComputeKeyword(voxelizeScene, "X_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Y_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Z_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
                     for (int i = 0; i < voxelResolution.x; i++)
                     {
                         //step through the scene on the X axis
@@ -749,9 +752,9 @@ namespace SceneVoxelizer3
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_POS, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_POS, ShaderIDs.Write, combinedSceneVoxel);
+                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_X_POS, voxelCameraSlice.width, voxelCameraSlice.height, 1);
                     }
 
                     //||||||||||||||||||||||||||||||||| X NEGATIVE AXIS |||||||||||||||||||||||||||||||||
@@ -759,15 +762,6 @@ namespace SceneVoxelizer3
                     //||||||||||||||||||||||||||||||||| X NEGATIVE AXIS |||||||||||||||||||||||||||||||||
                     //orient the voxel camera to face the negative X axis.
                     voxelCameraGameObject.transform.eulerAngles = new Vector3(0, -90.0f, 0);
-
-                    //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-                    //this is important as each axis requires some specific swizzling so that it shows up correctly.
-                    SetComputeKeyword(voxelizeScene, "X_POS", false);
-                    SetComputeKeyword(voxelizeScene, "X_NEG", true);
-                    SetComputeKeyword(voxelizeScene, "Y_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Z_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Z_NEG", false);
 
                     for (int i = 0; i < voxelResolution.x; i++)
                     {
@@ -777,9 +771,9 @@ namespace SceneVoxelizer3
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_NEG, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_NEG, ShaderIDs.Write, combinedSceneVoxel);
+                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_X_NEG, voxelCameraSlice.width, voxelCameraSlice.height, 1);
                     }
 
                     //release the render texture slice, because we are going to create a new one with new dimensions for the next axis...
@@ -804,15 +798,6 @@ namespace SceneVoxelizer3
                     //orient the voxel camera to face the positive Y axis.
                     voxelCameraGameObject.transform.eulerAngles = new Vector3(-90.0f, 0, 0);
 
-                    //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-                    //this is important as each axis requires some specific swizzling so that it shows up correctly.
-                    SetComputeKeyword(voxelizeScene, "X_POS", false);
-                    SetComputeKeyword(voxelizeScene, "X_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Y_POS", true);
-                    SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Z_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
                     for (int i = 0; i < voxelResolution.y; i++)
                     {
                         //step through the scene on the Y axis
@@ -821,9 +806,9 @@ namespace SceneVoxelizer3
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_POS, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_POS, ShaderIDs.Write, combinedSceneVoxel);
+                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Y_POS, voxelCameraSlice.width, voxelCameraSlice.height, 1);
                     }
 
                     //||||||||||||||||||||||||||||||||| Y NEGATIVE AXIS |||||||||||||||||||||||||||||||||
@@ -831,15 +816,6 @@ namespace SceneVoxelizer3
                     //||||||||||||||||||||||||||||||||| Y NEGATIVE AXIS |||||||||||||||||||||||||||||||||
                     //orient the voxel camera to face the negative Y axis.
                     voxelCameraGameObject.transform.eulerAngles = new Vector3(90.0f, 0, 0);
-
-                    //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-                    //this is important as each axis requires some specific swizzling so that it shows up correctly.
-                    SetComputeKeyword(voxelizeScene, "X_POS", false);
-                    SetComputeKeyword(voxelizeScene, "X_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Y_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Y_NEG", true);
-                    SetComputeKeyword(voxelizeScene, "Z_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Z_NEG", false);
 
                     for (int i = 0; i < voxelResolution.y; i++)
                     {
@@ -849,9 +825,9 @@ namespace SceneVoxelizer3
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_NEG, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_NEG, ShaderIDs.Write, combinedSceneVoxel);
+                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Y_NEG, voxelCameraSlice.width, voxelCameraSlice.height, 1);
                     }
 
                     //release the render texture slice, because we are going to create a new one with new dimensions for the next axis...
@@ -876,15 +852,6 @@ namespace SceneVoxelizer3
                     //orient the voxel camera to face the positive Z axis.
                     voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 0, 0);
 
-                    //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-                    //this is important as each axis requires some specific swizzling so that it shows up correctly.
-                    SetComputeKeyword(voxelizeScene, "X_POS", false);
-                    SetComputeKeyword(voxelizeScene, "X_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Y_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Z_POS", true);
-                    SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
                     for (int i = 0; i < voxelResolution.z; i++)
                     {
                         //step through the scene on the Z axis
@@ -893,9 +860,9 @@ namespace SceneVoxelizer3
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_POS, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_POS, ShaderIDs.Write, combinedSceneVoxel);
+                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Z_POS, voxelCameraSlice.width, voxelCameraSlice.height, 1);
                     }
 
                     //||||||||||||||||||||||||||||||||| Z NEGATIVE AXIS |||||||||||||||||||||||||||||||||
@@ -903,15 +870,6 @@ namespace SceneVoxelizer3
                     //||||||||||||||||||||||||||||||||| Z NEGATIVE AXIS |||||||||||||||||||||||||||||||||
                     //orient the voxel camera to face the negative Z axis.
                     voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 180.0f, 0);
-
-                    //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-                    //this is important as each axis requires some specific swizzling so that it shows up correctly.
-                    SetComputeKeyword(voxelizeScene, "X_POS", false);
-                    SetComputeKeyword(voxelizeScene, "X_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Y_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-                    SetComputeKeyword(voxelizeScene, "Z_POS", false);
-                    SetComputeKeyword(voxelizeScene, "Z_NEG", true);
 
                     for (int i = 0; i < voxelResolution.z; i++)
                     {
@@ -921,9 +879,9 @@ namespace SceneVoxelizer3
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_NEG, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                        voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_NEG, ShaderIDs.Write, combinedSceneVoxel);
+                        voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Z_NEG, voxelCameraSlice.width, voxelCameraSlice.height, 1);
                     }
 
                     //release the render texture slice, because we are done with it...
@@ -943,6 +901,8 @@ namespace SceneVoxelizer3
                             timeBeforeVolumeSaving = Time.realtimeSinceStartup;
                             //RenderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName));
                             renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName));
+                            //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName), voxelAlbedoBufferFormat, true);
+                            //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName), GraphicsFormat.R8G8B8A8_UNorm);
                             Debug.Log(string.Format("Albedo Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
                             break;
                         case 1:
@@ -950,6 +910,7 @@ namespace SceneVoxelizer3
                             timeBeforeVolumeSaving = Time.realtimeSinceStartup;
                             //RenderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName));
                             renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName));
+                            //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName), voxelEmissiveBufferFormat, true);
                             Debug.Log(string.Format("Emissive Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
                             break;
                         case 2:
@@ -957,6 +918,7 @@ namespace SceneVoxelizer3
                             timeBeforeVolumeSaving = Time.realtimeSinceStartup;
                             //RenderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName));
                             renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName));
+                            //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName), voxelNormalBufferFormat, true);
                             Debug.Log(string.Format("Normal Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
                             break;
                     }
@@ -973,19 +935,7 @@ namespace SceneVoxelizer3
             float timeBeforeCleanUp = Time.realtimeSinceStartup;
 
             for (int i = 0; i < objectsMetaData.Count; i++)
-            {
-                ObjectMetaData objectMetaData = objectsMetaData[i];
-
-                objectMetaData.mesh = null;
-
-                if (objectMetaData.materials != null)
-                {
-                    for (int j = 0; j < objectMetaData.materials.Length; j++)
-                        objectMetaData.materials[j].ReleaseTextures();
-                }
-
-                objectMetaData.materials = null;
-            }
+                objectsMetaData[i].CleanUp();
 
             Debug.Log(string.Format("Clean Up took {0} seconds.", Time.realtimeSinceStartup - timeBeforeCleanUp));
             Debug.Log(string.Format("Total Function Time: {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
@@ -1082,7 +1032,7 @@ namespace SceneVoxelizer3
         //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| UTILITIES ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| UTILITIES ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 
-        public void UpdateProgressBar(string description, float progress) => EditorUtility.DisplayProgressBar("Scene Voxelizer", description, progress);
+        public void UpdateProgressBar(string description, float progress) => EditorUtility.DisplayProgressBar("Scene Voxelizer V3", description, progress);
 
         public void CloseProgressBar() => EditorUtility.ClearProgressBar();
 

@@ -12,10 +12,27 @@ namespace SceneVoxelizer3
         public Bounds bounds;
         public MaterialMetaData[] materials;
 
-        public void ReleaseMaterials()
+        public void CleanUp()
         {
+            mesh = null;
+
+            if (materials != null)
+            {
+                for (int j = 0; j < materials.Length; j++)
+                    materials[j].ReleaseTextures();
+            }
+
+            materials = null;
+        }
+
+        public long GetDebugMemorySize()
+        {
+            long totalSize = 0;
+
             for (int i = 0; i < materials.Length; i++)
-                materials[i].ReleaseTextures();
+                totalSize += materials[i].GetDebugMemorySize();
+
+            return totalSize;
         }
     }
 }

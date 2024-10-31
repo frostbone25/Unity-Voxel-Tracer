@@ -88,6 +88,7 @@ Material:
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _VectorBrightness: {r: 1, g: 1, b: 1, a: 2.17}
     - _VolumePos: {r: 2.6, g: 32.5, b: -1.9, a: 0}
     - _VolumeSize: {r: 189, g: 79.3, b: 116.5, a: 0}
   m_BuildTextureStacks: []

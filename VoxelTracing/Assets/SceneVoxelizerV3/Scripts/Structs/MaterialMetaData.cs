@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace SceneVoxelizer3
 {
@@ -25,5 +26,7 @@ namespace SceneVoxelizer3
         }
 
         public bool isEmpty() => albedoBuffer == null || emissiveBuffer == null || normalBuffer == null;
+
+        public long GetDebugMemorySize() => Profiler.GetRuntimeMemorySizeLong(albedoBuffer) + Profiler.GetRuntimeMemorySizeLong(emissiveBuffer) + Profiler.GetRuntimeMemorySizeLong(normalBuffer);
     }
 }

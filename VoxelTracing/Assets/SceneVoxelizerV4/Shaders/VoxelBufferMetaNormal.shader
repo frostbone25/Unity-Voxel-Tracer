@@ -53,7 +53,6 @@ Shader "SceneVoxelizerV4/VoxelBufferMetaNormal"
 
             float4 fragment_base(vertexToFragment vertex) : SV_Target
             {
-                //return float4(vertex.normalWorld.xyz * 0.5 + 0.5, 1);
                 return float4(vertex.normalWorld.xyz * 0.5 + 0.5, 1);
             }
             ENDCG

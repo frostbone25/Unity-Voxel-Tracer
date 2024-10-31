@@ -15,6 +15,8 @@ namespace UnityVoxelTracer
 {
     public static class RenderTextureConverterV1
     {
+        //private static string slicerAssetPath = "Assets/RenderTextureConverterV1/VolumeSlicer.compute";
+
         /// <summary>
         /// Captures a single slice of the volume we are capturing.
         /// </summary>

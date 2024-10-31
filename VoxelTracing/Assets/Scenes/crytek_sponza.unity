@@ -322,6 +322,7 @@ GameObject:
   - component: {fileID: 496284635}
   - component: {fileID: 496284638}
   - component: {fileID: 496284639}
+  - component: {fileID: 496284640}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -387,8 +388,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 496284634}
-  m_LocalRotation: {x: -0.07548202, y: -0.6135869, z: -0.059072, w: 0.7837884}
-  m_LocalPosition: {x: 68.904106, y: 2.8534756, z: -11.175355}
+  m_LocalRotation: {x: -0.07395868, y: 0.8642823, z: 0.13325362, w: 0.47936374}
+  m_LocalPosition: {x: -55.879684, y: 4.137126, z: 3.123718}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -467,14 +468,36 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   resolution: {x: 1920, y: 1080}
-  texelDensityPerUnit: 4
+  texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1
-  dilationPixelSize: 512
-  colorDilationPixelSize: 128
-  alphaDilationPixelSize: 1
+  dilationPixelSize: 1024
+  useBilinearFiltering: 0
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+--- !u!114 &496284640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 496284634}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54b68b07b049c0c43a5d7b7b52ef9f5f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  texelDensityPerUnit: 8
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 128
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  onlyUseMeshesWithinBounds: 1
   useBoundingBoxCullingForRendering: 1
   objectLayerMask:
     serializedVersion: 2
@@ -496,7 +519,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &570566908
 Transform:
   m_ObjectHideFlags: 0
@@ -968,10 +991,13 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
-  texelDensityPerUnit: 1
+  texelDensityPerUnit: 4
   minimumBufferResolution: 16
   performDilation: 1
   dilationPixelSize: 128
+  blendAlbedoVoxelSlices: 0
+  blendEmissiveVoxelSlices: 0
+  blendNormalVoxelSlices: 0
   doubleSidedGeometry: 1
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
@@ -996,6 +1022,7 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
+  blendVoxelSlices: 0
   previewBounds: 0
 --- !u!114 &1425651872
 MonoBehaviour:
@@ -1012,6 +1039,9 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
   doubleSidedGeometry: 1
   previewBounds: 0
 --- !u!114 &1425651873
@@ -1033,6 +1063,10 @@ MonoBehaviour:
   minimumBufferResolution: 16
   performDilation: 1
   dilationPixelSize: 128
+  useBilinearFiltering: 0
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
   doubleSidedGeometry: 1
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
@@ -1115,7 +1149,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 138fb7a441b3187449703e61387abd07, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 138fb7a441b3187449703e61387abd07, type: 3}
       propertyPath: m_LocalPosition.y
@@ -1135,11 +1169,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 138fb7a441b3187449703e61387abd07, type: 3}
       propertyPath: m_LocalRotation.y
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 138fb7a441b3187449703e61387abd07, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 138fb7a441b3187449703e61387abd07, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -2645,7 +2679,7 @@ PrefabInstance:
   m_SourcePrefab: {fileID: 100100000, guid: 138fb7a441b3187449703e61387abd07, type: 3}
 --- !u!1 &1453591159 stripped
 GameObject:
-  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 138fb7a441b3187449703e61387abd07, type: 3}
+  m_CorrespondingSourceObject: {fileID: 3848622963333447232, guid: 138fb7a441b3187449703e61387abd07, type: 3}
   m_PrefabInstance: {fileID: 1453591158}
   m_PrefabAsset: {fileID: 0}
 --- !u!114 &1453591160
@@ -2657,22 +2691,36 @@ MonoBehaviour:
   m_GameObject: {fileID: 1453591159}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
+  m_Script: {fileID: 11500000, guid: 9d25709853f99ab4cb3604186ef2cc81, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  resolution: {x: 1920, y: 1080}
-  texelDensityPerUnit: 2
-  minimumBufferResolution: 16
+  resolution: {x: 128, y: 128}
   performDilation: 1
-  dilationPixelSize: 128
+  dilationPixelSize: 1024
   colorDilationPixelSize: 128
   alphaDilationPixelSize: 1
-  onlyUseGIContributors: 1
-  onlyUseShadowCasters: 1
-  useBoundingBoxCullingForRendering: 1
-  objectLayerMask:
-    serializedVersion: 2
-    m_Bits: 1
+--- !u!1 &1453591161 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2656464595460168769, guid: 138fb7a441b3187449703e61387abd07, type: 3}
+  m_PrefabInstance: {fileID: 1453591158}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1453591162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1453591161}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d25709853f99ab4cb3604186ef2cc81, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  resolution: {x: 1024, y: 1024}
+  performDilation: 1
+  dilationPixelSize: 512
+  colorDilationPixelSize: 128
+  alphaDilationPixelSize: 1
 --- !u!1 &1521843088
 GameObject:
   m_ObjectHideFlags: 0

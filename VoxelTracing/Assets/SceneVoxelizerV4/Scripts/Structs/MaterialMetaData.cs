@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace SceneVoxelizer4
 {
@@ -17,5 +18,7 @@ namespace SceneVoxelizer4
         }
 
         public bool isEmpty() => packedMetaBuffer == null;
+
+        public long GetDebugMemorySize() => Profiler.GetRuntimeMemorySizeLong(packedMetaBuffer);
     }
 }

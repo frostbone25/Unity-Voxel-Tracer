@@ -50,10 +50,11 @@ namespace CameraMetaPass1
         //SMALLER VALUES: smaller dilation radius | worse dilation quality/accuracy
         public int dilationPixelSize = 128;
 
-        public int colorDilationPixelSize = 128;
-        public int alphaDilationPixelSize = 1;
-
-        //public bool doubleSidedGeometry = true;
+        //this controls whether bilinear filtering is used for the final generated meta textures.
+        //this can soften details/sharpness for textures but this could also potentially help with artifacting.
+        //ENABLED: This will enable bilinear filtering on meta textures
+        //DISABLED: This will enable bilinear filtering on meta textures
+        public bool useBilinearFiltering = false;
 
         [Header("Optimizations")]
         //this will only use mesh renderers that are marked "Contribute Global Illumination".
@@ -86,24 +87,25 @@ namespace CameraMetaPass1
         private static string localAssetFolder = "Assets/CameraMetaPassV1";
         private static string localAssetComputeFolder = "Assets/CameraMetaPassV1/ComputeShaders";
         private static string localAssetDataFolder = "Assets/CameraMetaPassV1/Data";
-
+        private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
         private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
         private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
-        private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
 
         private static RenderTextureFormat metaAlbedoFormat = RenderTextureFormat.ARGB32;
         private static RenderTextureFormat metaEmissiveFormat = RenderTextureFormat.ARGBHalf;
         private static RenderTextureFormat metaNormalFormat = RenderTextureFormat.ARGB32;
         private static RenderTextureFormat sceneRenderFormat = RenderTextureFormat.ARGB32;
+        private static TextureWrapMode metaTextureWrapMode = TextureWrapMode.Clamp;
+
+        private FilterMode metaTextureFilterMode => useBilinearFiltering ? FilterMode.Bilinear : FilterMode.Point;
 
         private ComputeShader dilate => AssetDatabase.LoadAssetAtPath<ComputeShader>(dilateAssetPath);
-
         private Shader voxelBufferMeta => Shader.Find("CameraMetaPassV1/VoxelBufferMeta");
         private Shader voxelBufferMetaNormal => Shader.Find("CameraMetaPassV1/VoxelBufferMetaNormal");
 
-        private Camera camera => GetComponent<Camera>();
-
         private RenderTextureConverterV2 renderTextureConverter => new RenderTextureConverterV2();
+
+        private Camera camera => GetComponent<Camera>();
 
         /// <summary>
         /// Load in necessary resources.
@@ -303,7 +305,8 @@ namespace CameraMetaPass1
 
                                 //create our albedo render texture buffer
                                 materialMetaData.albedoBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaAlbedoFormat);
-                                materialMetaData.albedoBuffer.filterMode = FilterMode.Point;
+                                materialMetaData.albedoBuffer.filterMode = metaTextureFilterMode;
+                                materialMetaData.albedoBuffer.wrapMode = metaTextureWrapMode;
                                 materialMetaData.albedoBuffer.enableRandomWrite = true; //important
                                 materialMetaData.albedoBuffer.Create();
 
@@ -343,7 +346,8 @@ namespace CameraMetaPass1
 
                                 //create our emissive render texture buffer
                                 materialMetaData.emissiveBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaEmissiveFormat);
-                                materialMetaData.emissiveBuffer.filterMode = FilterMode.Point;
+                                materialMetaData.emissiveBuffer.filterMode = metaTextureFilterMode;
+                                materialMetaData.emissiveBuffer.wrapMode = metaTextureWrapMode;
                                 materialMetaData.emissiveBuffer.enableRandomWrite = true;
                                 materialMetaData.emissiveBuffer.Create();
 
@@ -384,7 +388,8 @@ namespace CameraMetaPass1
 
                                 //create our normal render texture buffer
                                 materialMetaData.normalBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaNormalFormat);
-                                materialMetaData.normalBuffer.filterMode = FilterMode.Point;
+                                materialMetaData.normalBuffer.filterMode = metaTextureFilterMode;
+                                materialMetaData.normalBuffer.wrapMode = metaTextureWrapMode;
                                 materialMetaData.normalBuffer.enableRandomWrite = true;
                                 materialMetaData.normalBuffer.Create();
 

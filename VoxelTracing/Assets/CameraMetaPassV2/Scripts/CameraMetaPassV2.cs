@@ -11,37 +11,14 @@ using UnityEngine.XR;
 using System.Linq;
 using RenderTextureConverting;
 using CameraMetaPass1;
+using UnityEngine.Experimental.Rendering;
+using UnityEditor.SceneManagement;
 
 namespace CameraMetaPass2
 {
     [ExecuteInEditMode]
     public class CameraMetaPassV2 : MonoBehaviour
     {
-        /*
-         * [IDEA]: We might be able to do some data-packing in our meta shader so that we only render the scene once, then unpack our results into two different buffers.
-         * 
-         * For instance with albedo, 8 bits is good enough for each channel, and we need alpha so thats 32 bits.
-         * We can technically pack those 32 bits into a single 32 bit float. (Note that floats don't have uniform precision)
-         * 
-         * With emission, we can normalize the color to [0,1] and store it in 24 bits (RGB)
-         * For intensity we can probably knock down it's precison to 16 bits, effectively half precision.
-         * So that means in total emission will need 40 bits.
-         * 
-         * In total the packed data is 72 bits. (or 88 if we preserve emission intensity as a 32-bit float)
-         * 
-         * We can render the scene once in ARGBFloat, which has 128 bits in total (32-bits floats for each channel)
-         * RED (R32 Float) - Albedo Red (8 bit) | Albedo Green (8 bit) | Albedo Blue (8 bit) | Albedo Alpha (8 bit)
-         * GREEN (G32 Float) - Emissive Normalized Red (8 bit) | Emissive Normalized Green (8 bit) | Emissive Normalized Blue (8 bit) | EMPTY (8 bit)
-         * BLUE (B32 Float) - Emissive Intensity (16 bit)
-         * ALPHA (A32 Float) - EMPTY
-         * 
-         * NOTE 2: We can also use Lightmap UVs, and it's scale/offsets defined for each mesh renderer to our advantage if a scene is lightmapped.
-         * We can atlas the meta buffers into a single texture to save additional memory costs.
-         * However pema noted that this is only possible IF a scene was already lightmapped.
-         * 
-         * In theory we can do our own atlasing... but thats alot of work :(
-        */
-
         //|||||||||||||||||||||||||||||||||||||||||| PUBLIC VARIABLES ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| PUBLIC VARIABLES ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| PUBLIC VARIABLES ||||||||||||||||||||||||||||||||||||||||||
@@ -71,8 +48,6 @@ namespace CameraMetaPass2
         //SMALLER VALUES: smaller dilation radius | worse dilation quality/accuracy
         public int dilationPixelSize = 128;
 
-        //public bool doubleSidedGeometry = true;
-
         [Header("Optimizations")]
         //this will only use mesh renderers that are marked "Contribute Global Illumination".
         //ENABLED: this will only use meshes in the scene marked for GI | faster voxelization | less memory usage (less objects needing meta textures)
@@ -83,11 +58,6 @@ namespace CameraMetaPass2
         //ENABLED: this will only use meshes in the scene marked for GI | faster voxelization | less memory usage (less objects needing meta textures)
         //DISABLED: every mesh renderer in the scene will be used | slower voxelization | more memory usage (more objects needing meta textures)
         public bool onlyUseShadowCasters = true;
-
-        //only use meshes that are within voxelization bounds
-        //ENABLED: only objects within voxelization bounds will be used | faster voxelization | less memory usage (less objects needing meta textures)
-        //DISABLED: all objects in the scene will be used for voxelization | slower voxelization | more memory usage (more objects needing meta textures)
-        public bool onlyUseMeshesWithinBounds = true;
 
         //use the bounding boxes on meshes during "voxelization" to render only what is visible
         //ENABLED: renders objects only visible in each voxel slice | much faster voxelization
@@ -106,88 +76,32 @@ namespace CameraMetaPass2
         private static int THREAD_GROUP_SIZE_X = 8;
         private static int THREAD_GROUP_SIZE_Y = 8;
 
+        private static string localAssetFolder = "Assets/CameraMetaPassV2";
+        private static string localAssetComputeFolder = "Assets/CameraMetaPassV2/ComputeShaders";
+        private static string localAssetDataFolder = "Assets/CameraMetaPassV2/Data";
+        private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
+        private string dataPackingAssetPath => localAssetComputeFolder + "/DataPacking.compute";
+        private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
+        private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
+
+        private static RenderTextureFormat metaAlbedoFormat = RenderTextureFormat.ARGB32;
+        private static RenderTextureFormat metaEmissiveFormat = RenderTextureFormat.ARGBHalf;
+        private static RenderTextureFormat metaNormalFormat = RenderTextureFormat.ARGB32;
+        private static RenderTextureFormat sceneRenderFormat = RenderTextureFormat.ARGB32;
+
+        private ComputeShader dilate => AssetDatabase.LoadAssetAtPath<ComputeShader>(dilateAssetPath);
+        private ComputeShader dataPacking => AssetDatabase.LoadAssetAtPath<ComputeShader>(dataPackingAssetPath);
+        private Shader voxelBufferMeta => Shader.Find("CameraMetaPassV2/VoxelBufferMeta");
+        private Shader voxelBufferMetaNormal => Shader.Find("CameraMetaPassV2/VoxelBufferMetaNormal");
+
         private RenderTextureConverterV2 renderTextureConverter => new RenderTextureConverterV2();
 
-        /// <summary>
-        /// Gets an array of renderer objects after LOD0 on an LODGroup.
-        /// </summary>
-        /// <param name="lodGroup"></param>
-        /// <returns></returns>
-        public static Renderer[] GetRenderersAfterLOD0(LODGroup lodGroup)
-        {
-            //get LODGroup lods
-            LOD[] lods = lodGroup.GetLODs();
-
-            //If there are no LODs...
-            //Or there is only one LOD level...
-            //Ignore this LODGroup and return nothing (we only want the renderers that are used for the other LOD groups)
-            if (lods.Length < 2)
-                return null;
-
-            //Initalize a dynamic array list of renderers that will be filled
-            List<Renderer> renderers = new List<Renderer>();
-
-            //Skip the first LOD level...
-            //And iterate through the rest of the LOD groups to get it's renderers
-            for (int i = 1; i < lods.Length; i++)
-            {
-                for (int j = 0; j < lods[i].renderers.Length; j++)
-                {
-                    Renderer lodRenderer = lods[i].renderers[j];
-
-                    if (lodRenderer != null)
-                        renderers.Add(lodRenderer);
-                }
-            }
-
-            //If no renderers were found, then return nothing.
-            if (renderers.Count <= 0)
-                return null;
-
-            return renderers.ToArray();
-        }
-
-        /// <summary>
-        /// Returns a list of hashes for the given renderer array.
-        /// </summary>
-        /// <param name="renderers"></param>
-        /// <returns></returns>
-        public static int[] GetRendererHashCodes(Renderer[] renderers)
-        {
-            int[] hashCodeArray = new int[renderers.Length];
-
-            for (int i = 0; i < hashCodeArray.Length; i++)
-                hashCodeArray[i] = renderers[i].GetHashCode();
-
-            return hashCodeArray;
-        }
-
-        /// <summary>
-        /// Returns a hash code array of renderers found after LOD0 in a given LOD group.
-        /// </summary>
-        /// <param name="lodGroup"></param>
-        /// <returns></returns>
-        public static int[] GetRendererHashCodesAfterLOD0(LODGroup lodGroup)
-        {
-            Renderer[] renderers = GetRenderersAfterLOD0(lodGroup);
-
-            if (renderers == null || renderers.Length <= 1)
-                return null;
-            else
-                return GetRendererHashCodes(renderers);
-        }
-
+        private Camera camera => GetComponent<Camera>();
 
         [ContextMenu("RenderSceneMetaPassForCamera")]
         public void RenderAllMeshesNormally()
         {
             double timeBeforeFunction = Time.realtimeSinceStartupAsDouble;
-
-            //fetch the compute shader that handles dilation
-            ComputeShader dilate = AssetDatabase.LoadAssetAtPath<ComputeShader>("Assets/Dilation.compute");
-            ComputeShader dataPacking = AssetDatabase.LoadAssetAtPath<ComputeShader>("Assets/DataPacking.compute");
-
-            Camera camera = GetComponent<Camera>();
 
             //formats for each of the object buffers
             //RenderTextureFormat albedoFormat = RenderTextureFormat.ARGB4444; //16 bits
@@ -195,16 +109,14 @@ namespace CameraMetaPass2
             //RenderTextureFormat albedoFormat = RenderTextureFormat.ARGB64; //64 bits
             //RenderTextureFormat emissionFormat = RenderTextureFormat.ARGB2101010;
             //RenderTextureFormat emissionFormat = RenderTextureFormat.R8;
-            RenderTextureFormat packedFormat = RenderTextureFormat.ARGB64; //64 bits
+            //RenderTextureFormat packedFormat = RenderTextureFormat.ARGB64; //64 bits
+            GraphicsFormat packedFormat = GraphicsFormat.R16G16B16A16_UNorm; //64 bits
             RenderTextureFormat intermediateFormat = RenderTextureFormat.ARGBFloat;
             //ARGBInt
 
             //parameters for the final scene render at the end
             Vector2Int sceneResolution = new Vector2Int(1920, 1080);
             RenderTextureFormat sceneRenderTextureFormat = RenderTextureFormat.ARGBFloat;
-            TextureFormat savedSceneFormat = TextureFormat.RGBAHalf;
-
-            //Plane[] cameraPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
 
             //|||||||||||||||||||||||||||||||||||||| GATHER RENDERER HASH CODES TO EXCLUDE ||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||| GATHER RENDERER HASH CODES TO EXCLUDE ||||||||||||||||||||||||||||||||||||||
@@ -245,7 +157,7 @@ namespace CameraMetaPass2
             //initalize a dynamic array of object meta data that will be filled up.
             List<ObjectMetaData> objectsMetaData = new List<ObjectMetaData>();
 
-            Material meshNormalMaterial = new Material(Shader.Find("Hidden/VoxelBufferMetaNormal"));
+            Material meshNormalMaterial = new Material(voxelBufferMetaNormal);
 
             //Property values used in the "META" pass in unity shaders.
             //The "META" pass is used during lightmapping to extract albedo/emission colors from materials in a scene.
@@ -262,11 +174,11 @@ namespace CameraMetaPass2
 
             //fetch our dilation function kernel in the compute shader
             int ComputeShader_Dilation = dilate.FindKernel("ComputeShader_Dilation");
-            int ComputeShader_DataPacking64 = dataPacking.FindKernel("ComputeShader_DataPacking64");
-            int ComputeShader_DataUnpacking64 = dataPacking.FindKernel("ComputeShader_DataUnpacking64");
+            int ComputeShader_DataPacking64 = dataPacking.FindKernel("ComputeShader_DataPacking");
+            int ComputeShader_DataUnpacking64 = dataPacking.FindKernel("ComputeShader_DataUnpacking");
 
             //set the amount of dilation steps it will take
-            dilate.SetInt("KernelSize", 256);
+            dilate.SetInt("KernelSize", dilationPixelSize);
 
             //iterate through each mesh renderer in the scene
             for (int i = 0; i < meshRenderers.Length; i++)
@@ -479,21 +391,8 @@ namespace CameraMetaPass2
 
             for (int i = 0; i < objectsMetaData.Count; i++)
             {
-                ObjectMetaData objectMetaData = objectsMetaData[i];
-
-                objectMetaData.mesh = null;
-
-                if (objectMetaData.materials != null)
-                {
-                    for (int j = 0; j < objectMetaData.materials.Length; j++)
-                    {
-                        if (objectMetaData.materials[j].isEmpty() == false)
-                        {
-                            memorySize += Profiler.GetRuntimeMemorySizeLong(objectMetaData.materials[j].packedMetaBuffer);
-                            textures++;
-                        }
-                    }
-                }
+                memorySize += objectsMetaData[i].GetDebugMemorySize();
+                textures++;
             }
 
             Debug.Log(string.Format("Meta Textures {0} | Total Runtime Memory: {1} MB [{2} B]", textures, Mathf.RoundToInt(memorySize / (1024.0f * 1024.0f)), memorySize));
@@ -524,7 +423,7 @@ namespace CameraMetaPass2
                 sceneAlbedoCommandBuffer.ClearRenderTarget(true, true, Color.clear); //IMPORTANT: clear contents before we render a new frame
 
                 //create a custom material with a custom shader that will only show the buffers we feed it.
-                Material objectMaterial = new Material(Shader.Find("Hidden/VoxelBufferMeta"));
+                Material objectMaterial = new Material(Shader.Find("SceneVoxelizerV4/VoxelBufferMeta"));
 
                 MaterialPropertyBlock materialPropertyBlock = new MaterialPropertyBlock();
                 materialPropertyBlock.SetVector("unity_LightmapST", new Vector4(1, 1, 0, 0)); //cancel out any lightmap UV scaling/offsets.
@@ -590,16 +489,6 @@ namespace CameraMetaPass2
 
             dataPacking.Dispatch(ComputeShader_DataUnpacking64, Mathf.CeilToInt(scenePackedMetaBuffer.width / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(scenePackedMetaBuffer.height / THREAD_GROUP_SIZE_Y), 1);
 
-            //AssetDatabase.CreateAsset(RenderTextureConverter.ConvertFromRenderTexture2D(scenePackedMetaBuffer, savedSceneFormat), "Assets/ScenePacked.asset");
-            //AssetDatabase.CreateAsset(RenderTextureConverter.ConvertFromRenderTexture2D(sceneAlbedo, savedSceneFormat), "Assets/SceneAlbedo.asset");
-            //AssetDatabase.CreateAsset(RenderTextureConverter.ConvertFromRenderTexture2D(sceneEmissive, savedSceneFormat), "Assets/SceneEmissive.asset");
-            //AssetDatabase.CreateAsset(RenderTextureConverter.ConvertFromRenderTexture2D(sceneNormal, savedSceneFormat), "Assets/SceneNormal.asset");
-
-            //sceneAlbedo.Release();
-            //sceneEmissive.Release();
-            //sceneNormal.Release();
-            //scenePackedMetaBuffer.Release();
-
             renderTextureConverter.SaveRenderTexture2DAsTexture2D(scenePackedMetaBuffer, "Assets/ScenePacked.asset");
             renderTextureConverter.SaveRenderTexture2DAsTexture2D(sceneAlbedo, "Assets/SceneAlbedo.asset");
             renderTextureConverter.SaveRenderTexture2DAsTexture2D(sceneEmissive, "Assets/SceneEmissive.asset");
@@ -610,21 +499,82 @@ namespace CameraMetaPass2
             //|||||||||||||||||||||||||||||||||||||| CLEAN UP ||||||||||||||||||||||||||||||||||||||
 
             for (int i = 0; i < objectsMetaData.Count; i++)
-            {
-                ObjectMetaData objectMetaData = objectsMetaData[i];
-
-                objectMetaData.mesh = null;
-
-                if (objectMetaData.materials != null)
-                {
-                    for (int j = 0; j < objectMetaData.materials.Length; j++)
-                        objectMetaData.materials[j].ReleaseTextures();
-                }
-
-                objectMetaData.materials = null;
-            }
+                objectsMetaData[i].CleanUp();
 
             Debug.Log(string.Format("Finished At: {0} seconds", Time.realtimeSinceStartupAsDouble - timeBeforeFunction));
+        }
+
+        //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| LOD FUNCTIONS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| LOD FUNCTIONS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| LOD FUNCTIONS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+        /// <summary>
+        /// Gets an array of renderer objects after LOD0 on an LODGroup.
+        /// </summary>
+        /// <param name="lodGroup"></param>
+        /// <returns></returns>
+        public static Renderer[] GetRenderersAfterLOD0(LODGroup lodGroup)
+        {
+            //get LODGroup lods
+            LOD[] lods = lodGroup.GetLODs();
+
+            //If there are no LODs...
+            //Or there is only one LOD level...
+            //Ignore this LODGroup and return nothing (we only want the renderers that are used for the other LOD groups)
+            if (lods.Length < 2)
+                return null;
+
+            //Initalize a dynamic array list of renderers that will be filled
+            List<Renderer> renderers = new List<Renderer>();
+
+            //Skip the first LOD level...
+            //And iterate through the rest of the LOD groups to get it's renderers
+            for (int i = 1; i < lods.Length; i++)
+            {
+                for (int j = 0; j < lods[i].renderers.Length; j++)
+                {
+                    Renderer lodRenderer = lods[i].renderers[j];
+
+                    if (lodRenderer != null)
+                        renderers.Add(lodRenderer);
+                }
+            }
+
+            //If no renderers were found, then return nothing.
+            if (renderers.Count <= 0)
+                return null;
+
+            return renderers.ToArray();
+        }
+
+        /// <summary>
+        /// Returns a list of hashes for the given renderer array.
+        /// </summary>
+        /// <param name="renderers"></param>
+        /// <returns></returns>
+        public static int[] GetRendererHashCodes(Renderer[] renderers)
+        {
+            int[] hashCodeArray = new int[renderers.Length];
+
+            for (int i = 0; i < hashCodeArray.Length; i++)
+                hashCodeArray[i] = renderers[i].GetHashCode();
+
+            return hashCodeArray;
+        }
+
+        /// <summary>
+        /// Returns a hash code array of renderers found after LOD0 in a given LOD group.
+        /// </summary>
+        /// <param name="lodGroup"></param>
+        /// <returns></returns>
+        public static int[] GetRendererHashCodesAfterLOD0(LODGroup lodGroup)
+        {
+            Renderer[] renderers = GetRenderersAfterLOD0(lodGroup);
+
+            if (renderers == null || renderers.Length <= 1)
+                return null;
+            else
+                return GetRendererHashCodes(renderers);
         }
     }
 }

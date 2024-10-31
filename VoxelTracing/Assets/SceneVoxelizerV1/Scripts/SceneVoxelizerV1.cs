@@ -22,7 +22,7 @@ using RenderTextureConverting;
  * 
  * NOTE TO SELF: Supersampling?
  * 
- * NOTE 5: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
+ * NOTE 2: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
  * 
  * While generating a voxel buffer of scene normals do work, and is rather trivial there are issues with it.
  * When they are used to orient hemispheres for importance sampling, if a voxel normal is facing the wrong direction, the hemisphere will be oriented incorrectly.
@@ -46,6 +46,9 @@ namespace SceneVoxelizer1
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f); //Size of the volume
         public float voxelDensitySize = 1.0f; //Size of each voxel (Smaller = More Voxels, Larger = Less Voxels)
 
+        [Header("Voxelization Rendering")]
+        public bool blendVoxelSlices = false;
+
         [Header("Gizmos")]
         public bool previewBounds;
 
@@ -65,25 +68,24 @@ namespace SceneVoxelizer1
         private static string localAssetComputeFolder = "Assets/SceneVoxelizerV1/ComputeShaders";
         private static string localAssetDataFolder = "Assets/SceneVoxelizerV1/Data";
         private string voxelizeSceneAssetPath => localAssetComputeFolder + "/VoxelizeScene.compute";
-        private string voxelBufferFileName => string.Format("SceneVoxelizerV1_{0}", voxelName);
         private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
         private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
+        private string voxelAssetPath => string.Format("{0}/SceneVoxelizerV1_{1}.asset", localAssetSceneDataFolder, voxelName);
 
-        private GameObject voxelCameraGameObject;
-        private Camera voxelCamera;
-        private ComputeShader voxelizeScene;
+        private ComputeShader voxelizeScene => AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelizeSceneAssetPath);
 
         private static RenderTextureFormat renderTextureFormat = RenderTextureFormat.ARGB32;
 
         private RenderTextureConverterV2 renderTextureConverter => new RenderTextureConverterV2();
 
+        private GameObject voxelCameraGameObject;
+        private Camera voxelCamera;
+
         /// <summary>
         /// Load in necessary resources for the voxel tracer.
         /// </summary>
-        private bool GetResources()
+        private bool HasResources()
         {
-            voxelizeScene = AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelizeSceneAssetPath);
-
             if (voxelizeScene == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelizeSceneAssetPath));
@@ -116,13 +118,6 @@ namespace SceneVoxelizer1
                 AssetDatabase.CreateFolder(localAssetDataFolder, activeScene.name);
         }
 
-        /// <summary>
-        /// Saves a given Texture3D asset to the local voxel asset directory under the current scene name.
-        /// </summary>
-        /// <param name="fileName"></param>
-        /// <param name="tex3D"></param>
-        public void SaveVolumeTexture(string fileName, Texture3D tex3D) => AssetDatabase.CreateAsset(tex3D, localAssetSceneDataFolder + "/" + fileName + ".asset");
-
         //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
@@ -143,6 +138,7 @@ namespace SceneVoxelizer1
             voxelCamera.forceIntoRenderTexture = true;
             voxelCamera.useOcclusionCulling = false;
             voxelCamera.orthographic = true;
+            voxelCamera.allowMSAA = false;
             voxelCamera.nearClipPlane = 0.0f;
             voxelCamera.farClipPlane = voxelDensitySize;
             voxelCamera.clearFlags = CameraClearFlags.Color;
@@ -183,13 +179,11 @@ namespace SceneVoxelizer1
         [ContextMenu("GenerateVolume")]
         public void GenerateVolume()
         {
-            UpdateProgressBar(string.Format("Generating {0}", voxelBufferFileName), 0.5f);
+            UpdateProgressBar(string.Format("Generating {0}", voxelAssetPath), 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
 
-            bool getResourcesResult = GetResources(); //Get all of our compute shaders ready.
-
-            if (getResourcesResult == false)
+            if (HasResources() == false)
                 return; //if both resource gathering functions returned false, that means something failed so don't continue
 
             SetupAssetFolders(); //Setup a local "scene" folder in our local asset directory if it doesn't already exist.
@@ -203,10 +197,18 @@ namespace SceneVoxelizer1
             float zOffset = voxelSize.z / voxelResolution.z;
 
             //pre-fetch our voxelize kernel function in the compute shader.
-            int ComputeShader_VoxelizeScene = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene");
+            int ComputeShader_VoxelizeScene_X_POS = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_X_POS");
+            int ComputeShader_VoxelizeScene_X_NEG = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_X_NEG");
+            int ComputeShader_VoxelizeScene_Y_POS = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Y_POS");
+            int ComputeShader_VoxelizeScene_Y_NEG = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Y_NEG");
+            int ComputeShader_VoxelizeScene_Z_POS = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Z_POS");
+            int ComputeShader_VoxelizeScene_Z_NEG = voxelizeScene.FindKernel("ComputeShader_VoxelizeScene_Z_NEG");
 
             //make sure the voxelize shader knows our voxel resolution beforehand.
             voxelizeScene.SetVector(ShaderIDs.VolumeResolution, new Vector4(voxelResolution.x, voxelResolution.y, voxelResolution.z, 0));
+
+            //set blending keyword
+            SetComputeKeyword(voxelizeScene, "BLEND_SLICES", blendVoxelSlices);
 
             //create our 3D render texture, which will be accumulating 2D slices of the scene captured at various axis.
             RenderTexture combinedSceneVoxel = new RenderTexture(voxelResolution.x, voxelResolution.y, 0, renderTextureFormat);
@@ -218,23 +220,6 @@ namespace SceneVoxelizer1
             combinedSceneVoxel.Create();
 
             float timeBeforeRendering = Time.realtimeSinceStartup;
-
-            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
-            //||||||||||||||||||||||||||||||||| RESIDUAL INFO CLEANUP |||||||||||||||||||||||||||||||||
-            //disable all keywords
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
-            //assign the 
-            voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-
-            //run the compute shader once, which will make all pixels float4(0, 0, 0, 0) to clean things up.
-            voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
 
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -255,15 +240,6 @@ namespace SceneVoxelizer1
             //orient the voxel camera to face the positive X axis.
             voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 90.0f, 0);
 
-            //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-            //this is important as each axis requires some specific swizzling so that it shows up correctly.
-            SetComputeKeyword(voxelizeScene, "X_POS", true);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
             for (int i = 0; i < voxelResolution.x; i++)
             {
                 //step through the scene on the X axis
@@ -272,9 +248,9 @@ namespace SceneVoxelizer1
 
                 //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                 voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_POS, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_POS, ShaderIDs.Write, combinedSceneVoxel);
+                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_X_POS, voxelCameraSlice.width, voxelCameraSlice.height, 1);
             }
 
             //||||||||||||||||||||||||||||||||| X NEGATIVE AXIS |||||||||||||||||||||||||||||||||
@@ -282,15 +258,6 @@ namespace SceneVoxelizer1
             //||||||||||||||||||||||||||||||||| X NEGATIVE AXIS |||||||||||||||||||||||||||||||||
             //orient the voxel camera to face the negative X axis.
             voxelCameraGameObject.transform.eulerAngles = new Vector3(0, -90.0f, 0);
-
-            //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-            //this is important as each axis requires some specific swizzling so that it shows up correctly.
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", true);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
 
             for (int i = 0; i < voxelResolution.x; i++)
             {
@@ -300,13 +267,12 @@ namespace SceneVoxelizer1
 
                 //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                 voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_NEG, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_X_NEG, ShaderIDs.Write, combinedSceneVoxel);
+                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_X_NEG, voxelCameraSlice.width, voxelCameraSlice.height, 1);
             }
 
             //release the render texture slice, because we are going to create a new one with new dimensions for the next axis...
-            voxelCameraSlice.DiscardContents(true, true);
             voxelCameraSlice.Release();
 
             //||||||||||||||||||||||||||||||||| Y AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -328,15 +294,6 @@ namespace SceneVoxelizer1
             //orient the voxel camera to face the positive Y axis.
             voxelCameraGameObject.transform.eulerAngles = new Vector3(-90.0f, 0, 0);
 
-            //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-            //this is important as each axis requires some specific swizzling so that it shows up correctly.
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", true);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
             for (int i = 0; i < voxelResolution.y; i++)
             {
                 //step through the scene on the Y axis
@@ -345,9 +302,9 @@ namespace SceneVoxelizer1
 
                 //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                 voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_POS, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_POS, ShaderIDs.Write, combinedSceneVoxel);
+                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Y_POS, voxelCameraSlice.width, voxelCameraSlice.height, 1);
             }
 
             //||||||||||||||||||||||||||||||||| Y NEGATIVE AXIS |||||||||||||||||||||||||||||||||
@@ -355,15 +312,6 @@ namespace SceneVoxelizer1
             //||||||||||||||||||||||||||||||||| Y NEGATIVE AXIS |||||||||||||||||||||||||||||||||
             //orient the voxel camera to face the negative Y axis.
             voxelCameraGameObject.transform.eulerAngles = new Vector3(90.0f, 0, 0);
-
-            //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-            //this is important as each axis requires some specific swizzling so that it shows up correctly.
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", true);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
 
             for (int i = 0; i < voxelResolution.y; i++)
             {
@@ -373,13 +321,12 @@ namespace SceneVoxelizer1
 
                 //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                 voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_NEG, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Y_NEG, ShaderIDs.Write, combinedSceneVoxel);
+                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Y_NEG, voxelCameraSlice.width, voxelCameraSlice.height, 1);
             }
 
             //release the render texture slice, because we are going to create a new one with new dimensions for the next axis...
-            voxelCameraSlice.DiscardContents(true, true);
             voxelCameraSlice.Release();
 
             //||||||||||||||||||||||||||||||||| Z AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -401,15 +348,6 @@ namespace SceneVoxelizer1
             //orient the voxel camera to face the positive Z axis.
             voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 0, 0);
 
-            //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-            //this is important as each axis requires some specific swizzling so that it shows up correctly.
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", true);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", false);
-
             for (int i = 0; i < voxelResolution.z; i++)
             {
                 //step through the scene on the Z axis
@@ -418,9 +356,9 @@ namespace SceneVoxelizer1
 
                 //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                 voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_POS, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_POS, ShaderIDs.Write, combinedSceneVoxel);
+                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Z_POS, voxelCameraSlice.width, voxelCameraSlice.height, 1);
             }
 
             //||||||||||||||||||||||||||||||||| Z NEGATIVE AXIS |||||||||||||||||||||||||||||||||
@@ -428,15 +366,6 @@ namespace SceneVoxelizer1
             //||||||||||||||||||||||||||||||||| Z NEGATIVE AXIS |||||||||||||||||||||||||||||||||
             //orient the voxel camera to face the negative Z axis.
             voxelCameraGameObject.transform.eulerAngles = new Vector3(0, 180.0f, 0);
-
-            //make sure the voxelize compute shader knows which axis we are going to be accumulating on.
-            //this is important as each axis requires some specific swizzling so that it shows up correctly.
-            SetComputeKeyword(voxelizeScene, "X_POS", false);
-            SetComputeKeyword(voxelizeScene, "X_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Y_POS", false);
-            SetComputeKeyword(voxelizeScene, "Y_NEG", false);
-            SetComputeKeyword(voxelizeScene, "Z_POS", false);
-            SetComputeKeyword(voxelizeScene, "Z_NEG", true);
 
             for (int i = 0; i < voxelResolution.z; i++)
             {
@@ -446,24 +375,23 @@ namespace SceneVoxelizer1
 
                 //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                 voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
-                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene, ShaderIDs.Write, combinedSceneVoxel);
-                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene, Mathf.CeilToInt(voxelResolution.x / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(voxelResolution.y / THREAD_GROUP_SIZE_Y), Mathf.CeilToInt(voxelResolution.z / THREAD_GROUP_SIZE_Z));
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_NEG, ShaderIDs.CameraVoxelRender, voxelCameraSlice);
+                voxelizeScene.SetTexture(ComputeShader_VoxelizeScene_Z_NEG, ShaderIDs.Write, combinedSceneVoxel);
+                voxelizeScene.Dispatch(ComputeShader_VoxelizeScene_Z_NEG, voxelCameraSlice.width, voxelCameraSlice.height, 1);
             }
 
             //release the render texture slice, because we are done with it...
-            voxelCameraSlice.DiscardContents(true, true);
             voxelCameraSlice.Release();
-            Debug.Log(string.Format("{0} rendering took {1} seconds.", voxelBufferFileName, Time.realtimeSinceStartup - timeBeforeRendering));
+            Debug.Log(string.Format("{0} rendering took {1} seconds.", voxelAssetPath, Time.realtimeSinceStartup - timeBeforeRendering));
 
             //||||||||||||||||||||||||||||||||| RENDER TEXTURE 3D ---> TEXTURE 3D CONVERSION |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| RENDER TEXTURE 3D ---> TEXTURE 3D CONVERSION |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| RENDER TEXTURE 3D ---> TEXTURE 3D CONVERSION |||||||||||||||||||||||||||||||||
             //final step, save our accumulated 3D texture to the disk.
 
-            renderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, localAssetSceneDataFolder + "/" + voxelBufferFileName + ".asset");
+            renderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, voxelAssetPath);
 
-            Debug.Log(string.Format("Generating {0} took {1} seconds.", voxelBufferFileName, Time.realtimeSinceStartup - timeBeforeFunction));
+            Debug.Log(string.Format("Generating {0} took {1} seconds.", voxelAssetPath, Time.realtimeSinceStartup - timeBeforeFunction));
 
             //get rid of this junk, don't need it no more.
             CleanupVoxelCamera();

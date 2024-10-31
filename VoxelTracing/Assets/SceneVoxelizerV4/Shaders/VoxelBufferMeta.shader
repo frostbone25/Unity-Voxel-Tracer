@@ -77,11 +77,11 @@ Shader "SceneVoxelizerV4/VoxelBufferMeta"
 
 
 
-                uint ALBEDO_R5G5B5A1 = mainColor.r * BITS_16_MAX_VALUE;
+                //uint ALBEDO_R5G5B5A1 = mainColor.r * BITS_16_MAX_VALUE;
 
-                uint ALBEDO_A1 = BitFieldExtract(ALBEDO_R5G5B5A1, 15u, 1u);
+                //uint ALBEDO_A1 = BitFieldExtract(ALBEDO_R5G5B5A1, 15u, 1u);
 
-                clip(any(ALBEDO_A1) ? 1 : 0);
+                //clip(any(ALBEDO_A1) ? 1 : 0);
 
 
 

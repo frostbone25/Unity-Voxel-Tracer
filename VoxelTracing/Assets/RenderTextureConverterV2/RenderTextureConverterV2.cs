@@ -50,7 +50,7 @@ namespace RenderTextureConverting
             AssetDatabase.SaveAssetIfDirty(converted);
         }
 
-        public Texture3D ConvertRenderTexture3DToTexture3D(RenderTexture renderTexture3D)
+        public Texture3D ConvertRenderTexture3DToTexture3D(RenderTexture renderTexture3D, bool readable = false)
         {
             int width = renderTexture3D.width;
             int height = renderTexture3D.height;
@@ -65,7 +65,7 @@ namespace RenderTextureConverting
                 convertedTexture3D = new Texture3D(width, height, depth, renderTexture3D.graphicsFormat, TextureCreationFlags.None);
                 convertedTexture3D.filterMode = renderTexture3D.filterMode;
                 convertedTexture3D.SetPixelData(nativeArray, 0);
-                convertedTexture3D.Apply(false, true);
+                convertedTexture3D.Apply(false, !readable);
 
                 nativeArray.Dispose();
                 renderTexture3D.Release();
@@ -76,11 +76,35 @@ namespace RenderTextureConverting
             return convertedTexture3D;
         }
 
-        public void SaveRenderTexture3DAsTexture3D(RenderTexture renderTexture3D, string assetRealtivePath)
+        public void SaveRenderTexture3DAsTexture3D(RenderTexture renderTexture3D, string assetRealtivePath, bool readable = false)
         {
-            Texture3D converted = ConvertRenderTexture3DToTexture3D(renderTexture3D);
+            Texture3D converted = ConvertRenderTexture3DToTexture3D(renderTexture3D, readable);
             AssetDatabase.CreateAsset(converted, assetRealtivePath);
             AssetDatabase.SaveAssetIfDirty(converted);
+        }
+
+        public void SaveRenderTexture3DAsTexture3D(RenderTexture renderTexture3D, string assetRealtivePath, TextureFormat newTextureFormat, bool readable = false)
+        {
+            Texture3D converted = ConvertRenderTexture3DToTexture3D(renderTexture3D, readable);
+            Texture3D convertedNewFormat = new Texture3D(converted.width, converted.height, converted.depth, newTextureFormat, false);
+            convertedNewFormat.filterMode = converted.filterMode;
+            convertedNewFormat.wrapMode = converted.wrapMode;
+
+            Graphics.ConvertTexture(converted, convertedNewFormat);
+            AssetDatabase.CreateAsset(convertedNewFormat, assetRealtivePath);
+            AssetDatabase.SaveAssetIfDirty(convertedNewFormat);
+        }
+
+        public void SaveRenderTexture3DAsTexture3D(RenderTexture renderTexture3D, string assetRealtivePath, GraphicsFormat newTextureFormat, bool readable = false)
+        {
+            Texture3D converted = ConvertRenderTexture3DToTexture3D(renderTexture3D, readable);
+            Texture3D convertedNewFormat = new Texture3D(converted.width, converted.height, converted.depth, newTextureFormat, TextureCreationFlags.None);
+            convertedNewFormat.filterMode = converted.filterMode;
+            convertedNewFormat.wrapMode = converted.wrapMode;
+
+            Graphics.ConvertTexture(converted, convertedNewFormat);
+            AssetDatabase.CreateAsset(convertedNewFormat, assetRealtivePath);
+            AssetDatabase.SaveAssetIfDirty(convertedNewFormat);
         }
     }
 }

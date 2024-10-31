@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace CameraMetaPass2
 {
@@ -17,5 +18,7 @@ namespace CameraMetaPass2
         }
 
         public bool isEmpty() => packedMetaBuffer == null;
+
+        public long GetDebugMemorySize() => Profiler.GetRuntimeMemorySizeLong(packedMetaBuffer);
     }
 }
