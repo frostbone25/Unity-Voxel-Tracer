@@ -491,13 +491,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54b68b07b049c0c43a5d7b7b52ef9f5f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  resolution: {x: 1920, y: 1080}
   texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1
   dilationPixelSize: 128
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
-  onlyUseMeshesWithinBounds: 1
   useBoundingBoxCullingForRendering: 1
   objectLayerMask:
     serializedVersion: 2
@@ -519,7 +519,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &570566908
 Transform:
   m_ObjectHideFlags: 0

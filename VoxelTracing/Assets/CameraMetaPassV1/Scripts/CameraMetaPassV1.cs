@@ -107,6 +107,10 @@ namespace CameraMetaPass1
 
         private Camera camera => GetComponent<Camera>();
 
+        //|||||||||||||||||||||||||||||||||||||| PACKAGE PREPPING ||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||| PACKAGE PREPPING ||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||| PACKAGE PREPPING ||||||||||||||||||||||||||||||||||||||
+
         /// <summary>
         /// Load in necessary resources.
         /// </summary>
@@ -144,15 +148,9 @@ namespace CameraMetaPass1
                 AssetDatabase.CreateFolder(localAssetDataFolder, activeScene.name);
         }
 
-
-
-
-
-
-
-
-
-
+        //|||||||||||||||||||||||||||||||||||||| META PASS BUILDING ||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||| META PASS BUILDING ||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||| META PASS BUILDING ||||||||||||||||||||||||||||||||||||||
 
         public List<ObjectMetaData> BuildMetaObjectBuffers()
         {
@@ -448,9 +446,12 @@ namespace CameraMetaPass1
             return objectsMetaData;
         }
 
+        //|||||||||||||||||||||||||||||||||||||| SCENE RENDERING ||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||| SCENE RENDERING ||||||||||||||||||||||||||||||||||||||
+        //|||||||||||||||||||||||||||||||||||||| SCENE RENDERING ||||||||||||||||||||||||||||||||||||||
 
-        [ContextMenu("RenderSceneMetaPassForCamera")]
-        public void RenderAllMeshesNormally()
+        [ContextMenu("RenderSceneBuffers")]
+        public void RenderSceneBuffers()
         {
             //check if we have the necessary resources to continue, if we don't then we can't
             if (HasResources() == false)
