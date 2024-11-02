@@ -624,9 +624,9 @@ float4 PackMetaBuffer(float4 albedoColor, float3 emissiveColor, float3 normalCol
     //||||||||||||||||| ALBEDO BUFFER 16 BITS (RGBA5551) |||||||||||||||||
     //||||||||||||||||| ALBEDO BUFFER 16 BITS (RGBA5551) |||||||||||||||||
     //||||||||||||||||| ALBEDO BUFFER 16 BITS (RGBA5551) |||||||||||||||||
-    uint ALBEDO_R5 = max(1, albedoColor.r * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
-    uint ALBEDO_G5 = max(1, albedoColor.g * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
-    uint ALBEDO_B5 = max(1, albedoColor.b * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
+    uint ALBEDO_R5 = albedoColor.r * BITS_5_MAX;
+    uint ALBEDO_G5 = albedoColor.g * BITS_5_MAX;
+    uint ALBEDO_B5 = albedoColor.b * BITS_5_MAX;
     uint ALBEDO_A1 = any(albedoColor.a) ? 1 : 0;
 
     uint combinedAlbedo_16bit_R5G5B5A1 = ALBEDO_R5 | ALBEDO_G5 << BITS_5 | ALBEDO_B5 << BITS_10 | ALBEDO_A1 << BITS_15;
@@ -636,9 +636,9 @@ float4 PackMetaBuffer(float4 albedoColor, float3 emissiveColor, float3 normalCol
     //||||||||||||||||| NORMAL BUFFER 16 BITS (RGB565) |||||||||||||||||
     //||||||||||||||||| NORMAL BUFFER 16 BITS (RGB565) |||||||||||||||||
 
-    uint NORMAL_R5 = max(1, normalColor.r * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
-    uint NORMAL_G6 = max(1, normalColor.g * BITS_6_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
-    uint NORMAL_B5 = max(1, normalColor.b * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
+    uint NORMAL_R5 = normalColor.r * BITS_5_MAX_VALUE;
+    uint NORMAL_G6 = normalColor.g * BITS_6_MAX_VALUE;
+    uint NORMAL_B5 = normalColor.b * BITS_5_MAX_VALUE;
 
     uint combinedNormal_16bit_R5G6B5 = NORMAL_R5 | NORMAL_G6 << BITS_5 | NORMAL_B5 << BITS_11;
     float packedNormal_16bit_R5G5B5 = combinedNormal_16bit_R5G6B5 / float(BITS_16_MAX_VALUE);
@@ -652,9 +652,9 @@ float4 PackMetaBuffer(float4 albedoColor, float3 emissiveColor, float3 normalCol
     float colorMultiplier = encodedEmissionColor.a;
     float packed_16bit_colorMultiplier = f32tof16(colorMultiplier) / float(BITS_16_MAX_VALUE);
 
-    uint EMISSION_R5 = max(1, encodedEmissionColor.r * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
-    uint EMISSION_G6 = max(1, encodedEmissionColor.g * BITS_6_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
-    uint EMISSION_B5 = max(1, encodedEmissionColor.b * BITS_5_MAX_VALUE); //note: use max 1 because otherwise we get polluted results
+    uint EMISSION_R5 = encodedEmissionColor.r * BITS_5_MAX_VALUE;
+    uint EMISSION_G6 = encodedEmissionColor.g * BITS_6_MAX_VALUE;
+    uint EMISSION_B5 = encodedEmissionColor.b * BITS_5_MAX_VALUE;
 
     uint combinedEmission_16bit_R5G6B5 = EMISSION_R5 | EMISSION_G6 << BITS_5 | EMISSION_B5 << BITS_11;
     float packedEmission_16bit_R5G6B5 = combinedEmission_16bit_R5G6B5 / float(BITS_16_MAX_VALUE);
@@ -671,23 +671,21 @@ void UnpackMetaBuffer(float4 packedBuffer64, out float4 albedoColor, out float4 
     //||||||||||||||||| ALBEDO BUFFER 16 BITS (RGBA5551) |||||||||||||||||
     //||||||||||||||||| ALBEDO BUFFER 16 BITS (RGBA5551) |||||||||||||||||
     //||||||||||||||||| ALBEDO BUFFER 16 BITS (RGBA5551) |||||||||||||||||
-    uint ALBEDO_R5G5B5A1 = packedBuffer64.r * BITS_16_MAX_VALUE;
+    uint ALBEDO_R5G5B5A1 = packedBuffer64.r * BITS_16_MAX;
 
-    uint ALBEDO_R5 = ExtractBits(ALBEDO_R5G5B5A1, 0u, 5u);
-    uint ALBEDO_G5 = ExtractBits(ALBEDO_R5G5B5A1, 5u, 5u);
-    uint ALBEDO_B5 = ExtractBits(ALBEDO_R5G5B5A1, 10u, 5u);
+    uint ALBEDO_R5 = ExtractBits(ALBEDO_R5G5B5A1, 0u, 5u) << BITS_11;
+    uint ALBEDO_G5 = ExtractBits(ALBEDO_R5G5B5A1, 5u, 5u) << BITS_11;
+    uint ALBEDO_B5 = ExtractBits(ALBEDO_R5G5B5A1, 10u, 5u) << BITS_11;
     uint ALBEDO_A1 = ExtractBits(ALBEDO_R5G5B5A1, 15u, 1u);
 
     float4 unpackedAlbedo = float4(0, 0, 0, 0);
-    unpackedAlbedo.r = (float) ALBEDO_R5 / (float) BITS_5_MAX;
-    unpackedAlbedo.g = (float) ALBEDO_G5 / (float) BITS_5_MAX;
-    unpackedAlbedo.b = (float) ALBEDO_B5 / (float) BITS_5_MAX;
+    unpackedAlbedo.rgb = float3(ALBEDO_R5, ALBEDO_G5, ALBEDO_B5) / float(BITS_16_MAX_VALUE);
     unpackedAlbedo.a = any(ALBEDO_A1) ? 1 : 0;
-
+    
     //||||||||||||||||| NORMAL BUFFER 16 BITS (RGB565) |||||||||||||||||
     //||||||||||||||||| NORMAL BUFFER 16 BITS (RGB565) |||||||||||||||||
     //||||||||||||||||| NORMAL BUFFER 16 BITS (RGB565) |||||||||||||||||
-    uint NORMAL_R5G6B5 = packedBuffer64.b * BITS_16_MAX_VALUE;
+    uint NORMAL_R5G6B5 = packedBuffer64.b * BITS_16_MAX;
 
     uint NORMAL_R5 = ExtractBits(NORMAL_R5G6B5, 0u, 5u) << BITS_11;
     uint NORMAL_G6 = ExtractBits(NORMAL_R5G6B5, 5u, 6u) << BITS_10;
@@ -699,20 +697,15 @@ void UnpackMetaBuffer(float4 packedBuffer64, out float4 albedoColor, out float4 
     //||||||||||||||||| EMISSIVE BUFFER 32 BITS (RGB565 + Half16) |||||||||||||||||
     //||||||||||||||||| EMISSIVE BUFFER 32 BITS (RGB565 + Half16) |||||||||||||||||
 
-    uint EMISSIVE_R5G6B5 = packedBuffer64.g * BITS_16_MAX_VALUE;
-    uint EMISSIVE_Multiplier = packedBuffer64.a * BITS_16_MAX_VALUE;
+    uint EMISSIVE_R5G6B5 = packedBuffer64.g * BITS_16_MAX;
+    uint EMISSIVE_Multiplier = packedBuffer64.a * BITS_16_MAX;
 
-    uint EMISSIVE_R5 = ExtractBits(EMISSIVE_R5G6B5, 0u, 5u);
-    uint EMISSIVE_G6 = ExtractBits(EMISSIVE_R5G6B5, 5u, 6u);
-    uint EMISSIVE_B5 = ExtractBits(EMISSIVE_R5G6B5, 11u, 5u);
+    uint EMISSIVE_R5 = ExtractBits(EMISSIVE_R5G6B5, 0u, 5u) << BITS_11;
+    uint EMISSIVE_G6 = ExtractBits(EMISSIVE_R5G6B5, 5u, 6u) << BITS_10;
+    uint EMISSIVE_B5 = ExtractBits(EMISSIVE_R5G6B5, 11u, 5u) << BITS_11;
 
-    float3 unpackedEncodedEmissiveColor = float3(0, 0, 0);
-    unpackedEncodedEmissiveColor.r = (float) EMISSIVE_R5 / (float) BITS_5_MAX;
-    unpackedEncodedEmissiveColor.g = (float) EMISSIVE_G6 / (float) BITS_6_MAX;
-    unpackedEncodedEmissiveColor.b = (float) EMISSIVE_B5 / (float) BITS_5_MAX;
-    
+    float3 unpackedEncodedEmissiveColor = float3(EMISSIVE_R5, EMISSIVE_G6, EMISSIVE_B5) / float(BITS_16_MAX_VALUE);
     float unpackedEncodedEmissiveMultiplier = f16tof32(EMISSIVE_Multiplier);
-
     float3 unpackedEmissive = DecodeRGBM(float4(unpackedEncodedEmissiveColor, unpackedEncodedEmissiveMultiplier));
 
     //||||||||||||||||| FINAL PACKED BUFFER 64 BITS (ARGB64) |||||||||||||||||

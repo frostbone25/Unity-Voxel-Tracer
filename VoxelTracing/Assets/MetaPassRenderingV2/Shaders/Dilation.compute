@@ -153,6 +153,6 @@ void ComputeShader_Dilation(uint3 id : SV_DispatchThreadID)
     float4 originalColor = Write[id.xy];
     //Write[id.xy] = float4(Dilate2D(id.xy).rgb, originalColor.a);
     //Write[id.xy] = float4(Dilate2D_Basic(id.xy).rgb, originalColor.a);
-    //Write[id.xy] = Dilate2D_Basic(id.xy);
-    Write[id.xy] = Dilate2D_Improved(id.xy);
+    Write[id.xy] = Dilate2D_Basic(id.xy);
+    //Write[id.xy] = Dilate2D_Improved(id.xy);
 }

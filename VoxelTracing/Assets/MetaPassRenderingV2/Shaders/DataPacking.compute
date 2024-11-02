@@ -24,7 +24,8 @@ void ComputeShader_DataPacking64(uint2 id : SV_DispatchThreadID)
 {
     float4 albedoColor = AlbedoBuffer[id.xy];
     float4 emissiveColor = EmissiveBuffer[id.xy];
-    float4 normalColor = NormalBuffer[id.xy];
+    //float4 normalColor = NormalBuffer[id.xy];
+    float4 normalColor = float4(0, 0, 0, 0);
 
     Write[id.xy] = PackMetaBuffer(albedoColor, emissiveColor.rgb, normalColor.rgb);
 }
