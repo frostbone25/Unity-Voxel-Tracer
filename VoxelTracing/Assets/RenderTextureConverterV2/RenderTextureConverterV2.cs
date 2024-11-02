@@ -50,6 +50,30 @@ namespace RenderTextureConverting
             AssetDatabase.SaveAssetIfDirty(converted);
         }
 
+        public void SaveAsyncRenderTexture2DAsTexture2D(RenderTexture renderTexture2D, string assetRealtivePath)
+        {
+            int width = renderTexture2D.width;
+            int height = renderTexture2D.height;
+            //int renderTextureMemorySize = (int)Profiler.GetRuntimeMemorySizeLong(renderTexture2D);
+            int renderTextureMemorySize = (int)RenderTextureSize.GetRenderTextureMemorySize(renderTexture2D);
+
+            NativeArray<byte> nativeArray = new NativeArray<byte>(renderTextureMemorySize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+
+            AsyncGPUReadbackRequest request = AsyncGPUReadback.RequestIntoNativeArray(ref nativeArray, renderTexture2D, 0, (request) =>
+            {
+                convertedTexture2D = new Texture2D(width, height, renderTexture2D.graphicsFormat, TextureCreationFlags.None);
+                convertedTexture2D.filterMode = convertedTexture2D.filterMode;
+                convertedTexture2D.SetPixelData(nativeArray, 0);
+                convertedTexture2D.Apply(false, true);
+
+                nativeArray.Dispose();
+                renderTexture2D.Release();
+
+                AssetDatabase.CreateAsset(convertedTexture2D, assetRealtivePath);
+                AssetDatabase.SaveAssetIfDirty(convertedTexture2D);
+            });
+        }
+
         public Texture3D ConvertRenderTexture3DToTexture3D(RenderTexture renderTexture3D, bool readable = false)
         {
             int width = renderTexture3D.width;

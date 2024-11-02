@@ -4,6 +4,14 @@ namespace SceneVoxelizer4
 {
     public static class ShaderIDs
     {
+        public static int CameraAlbedoVoxelRender => Shader.PropertyToID("CameraAlbedoVoxelRender");
+        public static int CameraEmissiveVoxelRender => Shader.PropertyToID("CameraEmissiveVoxelRender");
+        public static int CameraNormalVoxelRender => Shader.PropertyToID("CameraNormalVoxelRender");
+
+        public static int AlbedoWrite => Shader.PropertyToID("AlbedoWrite");
+        public static int EmissiveWrite => Shader.PropertyToID("EmissiveWrite");
+        public static int NormalWrite => Shader.PropertyToID("NormalWrite");
+
         public static int AlbedoBuffer => Shader.PropertyToID("AlbedoBuffer");
         public static int EmissiveBuffer => Shader.PropertyToID("EmissiveBuffer");
         public static int NormalBuffer => Shader.PropertyToID("NormalBuffer");

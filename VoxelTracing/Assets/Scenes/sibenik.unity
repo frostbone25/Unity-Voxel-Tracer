@@ -644,27 +644,13 @@ GameObject:
   - component: {fileID: 1086677852}
   - component: {fileID: 1086677851}
   - component: {fileID: 1086677850}
-  - component: {fileID: 1086677849}
   m_Layer: 0
   m_Name: Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!135 &1086677849
-SphereCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1086677848}
-  m_Material: {fileID: 0}
-  m_IsTrigger: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.5
-  m_Center: {x: 0, y: 0, z: 0}
+  m_IsActive: 0
 --- !u!23 &1086677850
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -922,6 +908,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1425651869}
   - component: {fileID: 1425651868}
+  - component: {fileID: 1425651870}
   m_Layer: 0
   m_Name: Voxelizer
   m_TagString: Untagged
@@ -944,19 +931,30 @@ MonoBehaviour:
   voxelName: Sibenik
   voxelSize: {x: 42, y: 32, z: 18}
   voxelDensitySize: 0.25
+  texelDensityPerUnit: 1
+  minimumBufferResolution: 16
+  onlyIncludeGIContributors: 1
   enableEnvironmentLighting: 1
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
+  volumetricTracing: 1
+  directSurfaceSamples: 128
+  directVolumetricSamples: 128
+  environmentSurfaceSamples: 4096
+  environmentVolumetricSamples: 64
   bounceSurfaceSamples: 1024
   bounceVolumetricSamples: 256
   bounces: 4
-  environmentSurfaceSamples: 4096
-  environmentVolumetricSamples: 64
   normalOrientedHemisphereSampling: 1
+  albedoBoost: 1
+  indirectIntensity: 1
+  environmentIntensity: 1
+  emissiveIntensity: 1
+  enableGPU_Readback_Limit: 1
   GPU_Readback_Limit: 4
-  showDetailedProgress: 1
   volumetricDirectGaussianSamples: 2
   volumetricBounceGaussianSamples: 2
+  volumetricEnvironmentGaussianSamples: 0
   previewBounds: 1
 --- !u!4 &1425651869
 Transform:
@@ -973,6 +971,37 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1425651870
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a01d90420281fa4bad525dee11c4891, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 42, y: 32, z: 18}
+  voxelDensitySize: 0.25
+  texelDensityPerUnit: 8
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 128
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
+  doubleSidedGeometry: 1
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  onlyUseMeshesWithinBounds: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  previewBounds: 0
 --- !u!1 &1690927905
 GameObject:
   m_ObjectHideFlags: 0

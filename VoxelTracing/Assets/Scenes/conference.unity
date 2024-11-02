@@ -524,46 +524,6 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
---- !u!1 &1179323715 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 8164078558771037576, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
-  m_PrefabInstance: {fileID: 1179323714}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &1179323716
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1179323715}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  texelDensityPerUnit: 1
-  minimumResolution: 16
-  onlyIncludeGIContributors: 1
---- !u!1 &1179323717 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: cc0e6393600e2ab4fbea3654e2d8a01e, type: 3}
-  m_PrefabInstance: {fileID: 1179323714}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &1179323718
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1179323717}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3c710ee63debe14aa5fb409e7f548e4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  texelDensityPerUnit: 1
-  minimumResolution: 16
-  onlyIncludeGIContributors: 1
 --- !u!1 &1425651867
 GameObject:
   m_ObjectHideFlags: 0
@@ -574,6 +534,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1425651869}
   - component: {fileID: 1425651868}
+  - component: {fileID: 1425651871}
+  - component: {fileID: 1425651870}
   m_Layer: 0
   m_Name: Voxelizer
   m_TagString: Untagged
@@ -636,6 +598,58 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1425651870
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 05e891dcb28723b4fb65539bbfd3bd65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 83.8, y: 23.1, z: 53.2}
+  voxelDensitySize: 0.25
+  texelDensityPerUnit: 4
+  minimumBufferResolution: 16
+  performDilation: 1
+  dilationPixelSize: 128
+  useBilinearFiltering: 0
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
+  doubleSidedGeometry: 1
+  onlyUseGIContributors: 0
+  onlyUseShadowCasters: 0
+  onlyUseMeshesWithinBounds: 0
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  previewBounds: 0
+--- !u!114 &1425651871
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1425651867}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e51b593fb14e45041954931db6c02a50, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voxelName: Voxel
+  voxelSize: {x: 83.8, y: 23.1, z: 53.2}
+  voxelDensitySize: 0.25
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
+  doubleSidedGeometry: 1
+  previewBounds: 0
 --- !u!1 &1690927905
 GameObject:
   m_ObjectHideFlags: 0

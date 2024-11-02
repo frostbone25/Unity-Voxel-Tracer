@@ -388,8 +388,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 496284634}
-  m_LocalRotation: {x: -0.07395868, y: 0.8642823, z: 0.13325362, w: 0.47936374}
-  m_LocalPosition: {x: -55.879684, y: 4.137126, z: 3.123718}
+  m_LocalRotation: {x: -0.12107688, y: 0.62379855, z: 0.09970177, w: 0.7656863}
+  m_LocalPosition: {x: -51.553818, y: 6.555071, z: -4.467835}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -472,7 +472,8 @@ MonoBehaviour:
   minimumBufferResolution: 16
   performDilation: 1
   dilationPixelSize: 1024
-  useBilinearFiltering: 0
+  useBilinearFiltering: 1
+  doubleSidedGeometry: 1
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
   useBoundingBoxCullingForRendering: 1
@@ -495,7 +496,8 @@ MonoBehaviour:
   texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1
-  dilationPixelSize: 128
+  dilationPixelSize: 1024
+  doubleSidedGeometry: 1
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
   useBoundingBoxCullingForRendering: 1
@@ -519,7 +521,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &570566908
 Transform:
   m_ObjectHideFlags: 0
@@ -991,13 +993,13 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
-  texelDensityPerUnit: 4
+  texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1
   dilationPixelSize: 128
-  blendAlbedoVoxelSlices: 0
-  blendEmissiveVoxelSlices: 0
-  blendNormalVoxelSlices: 0
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
   doubleSidedGeometry: 1
   onlyUseGIContributors: 1
   onlyUseShadowCasters: 1
@@ -1022,7 +1024,7 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
-  blendVoxelSlices: 0
+  blendVoxelSlices: 1
   previewBounds: 0
 --- !u!114 &1425651872
 MonoBehaviour:
@@ -1059,11 +1061,11 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
-  texelDensityPerUnit: 4
+  texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1
   dilationPixelSize: 128
-  useBilinearFiltering: 0
+  useBilinearFiltering: 1
   blendAlbedoVoxelSlices: 1
   blendEmissiveVoxelSlices: 1
   blendNormalVoxelSlices: 1

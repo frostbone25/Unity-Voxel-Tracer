@@ -23,7 +23,7 @@ using SceneVoxelizer3;
  * 
  * NOTE TO SELF: Supersampling?
 
- * NOTE 5: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
+ * NOTE 2: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
  * 
  * While generating a voxel buffer of scene normals do work, and is rather trivial there are issues with it.
  * When they are used to orient hemispheres for importance sampling, if a voxel normal is facing the wrong direction, the hemisphere will be oriented incorrectly.
@@ -69,9 +69,9 @@ namespace SceneVoxelizer2
         private Vector3Int voxelResolution => new Vector3Int((int)(voxelSize.x / voxelDensitySize), (int)(voxelSize.y / voxelDensitySize), (int)(voxelSize.z / voxelDensitySize));
 
         private string localAssetFolder = "Assets/SceneVoxelizerV2";
-        private string localAssetComputeFolder = "Assets/SceneVoxelizerV2/ComputeShaders";
+        private string localAssetShadersFolder = "Assets/SceneVoxelizerV2/Shaders";
         private string localAssetDataFolder = "Assets/SceneVoxelizerV2/Data";
-        private string voxelizeSceneAssetPath => localAssetComputeFolder + "/VoxelizeScene.compute";
+        private string voxelizeSceneAssetPath => localAssetShadersFolder + "/VoxelizeScene.compute";
         private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
         private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
         private string voxelAlbedoBufferFileName => string.Format("SceneVoxelizerV2_{0}_albedo", voxelName);
@@ -216,12 +216,12 @@ namespace SceneVoxelizer2
         /// <param name="texFormat"></param>
         public void GenerateVolume(Shader replacementShader, string filename, RenderTextureFormat rtFormat, TextureFormat savedTextureFormat, bool blendVoxelSlices)
         {
+            if (HasResources() == false)
+                return; //if both resource gathering functions returned false, that means something failed so don't continue
+
             UpdateProgressBar(string.Format("Generating {0}", filename), 0.5f);
 
             float timeBeforeFunction = Time.realtimeSinceStartup;
-
-            if (HasResources() == false)
-                return; //if both resource gathering functions returned false, that means something failed so don't continue
 
             SetupAssetFolders(); //Setup a local "scene" folder in our local asset directory if it doesn't already exist.
             CreateVoxelCamera(); //Create our voxel camera rig

@@ -23,16 +23,7 @@ using UnityEngine.Experimental.Rendering;
  * 
  * NOTE TO SELF: Supersampling?
  * 
- * NOTE 2: For best volumetric bounce light results, set bounce light samples for the "surface" tracing very high so volumetric bounce results appear cleaner.
- * 
- * NOTE 3: Surface Bounce Samples, and Volumetric Bounce samples are seperated for good reason.
- * Doing any kind of shading or sampling in the volumetric tracing functions are WAY more heavy than just doing it on surfaces.
- * 
- * NOTE 4: Theoretically, as an optimization for bounced volumetric lighting, we actually don't need to do any additional bounces for it.
- * What matters is that the surface lighting has the bounces it needs, all we do is just throw up the samples in the air and average them.
- * No need to do bounces for the volumetric lighting itself because that will VERY QUICKLY get intensive.
- * 
- * NOTE 5: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
+ * NOTE 2: Might be worth investing time into writing a voxel normal estimator, and a dynamically changing sample type... I'll explain
  * 
  * While generating a voxel buffer of scene normals do work, and is rather trivial there are issues with it.
  * When they are used to orient hemispheres for importance sampling, if a voxel normal is facing the wrong direction, the hemisphere will be oriented incorrectly.
@@ -157,35 +148,25 @@ namespace SceneVoxelizer3
         private Bounds voxelBounds => new Bounds(transform.position, voxelSize);
 
         private string localAssetFolder = "Assets/SceneVoxelizerV3";
-        private string localAssetComputeFolder = "Assets/SceneVoxelizerV3/ComputeShaders";
+        private string localAssetShadersFolder = "Assets/SceneVoxelizerV3/Shaders";
         private string localAssetDataFolder = "Assets/SceneVoxelizerV3/Data";
-        private string voxelizeSceneAssetPath => localAssetComputeFolder + "/VoxelizeScene.compute";
-        private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
+        private string voxelizeSceneAssetPath => localAssetShadersFolder + "/VoxelizeScene.compute";
         private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
         private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
 
         private ComputeShader voxelizeScene => AssetDatabase.LoadAssetAtPath<ComputeShader>(voxelizeSceneAssetPath);
-        private ComputeShader dilate => AssetDatabase.LoadAssetAtPath<ComputeShader>(dilateAssetPath);
-        private Shader voxelBufferMeta => Shader.Find("SceneVoxelizerV3/VoxelBufferMeta");
-        private Shader voxelBufferMetaNormal => Shader.Find("SceneVoxelizerV3/VoxelBufferMetaNormal");
 
-        private static RenderTextureFormat metaAlbedoFormat = RenderTextureFormat.ARGB4444;
-        private static RenderTextureFormat metaEmissiveFormat = RenderTextureFormat.ARGBHalf;
-        private static RenderTextureFormat metaNormalFormat = RenderTextureFormat.ARGB32;
         private static RenderTextureFormat voxelBufferFormat = RenderTextureFormat.ARGBHalf;
-
         private static TextureFormat voxelAlbedoBufferFormat = TextureFormat.RGBA32;
         private static TextureFormat voxelEmissiveBufferFormat = TextureFormat.RGBAHalf;
         private static TextureFormat voxelNormalBufferFormat = TextureFormat.RGBA32;
-
-        private static TextureWrapMode metaTextureWrapMode = TextureWrapMode.Clamp;
-
-        private FilterMode metaTextureFilterMode => useBilinearFiltering ? FilterMode.Bilinear : FilterMode.Point;
 
         private RenderTextureConverterV2 renderTextureConverterV2 => new RenderTextureConverterV2();
 
         private GameObject voxelCameraGameObject;
         private Camera voxelCamera;
+
+        private MetaPassRenderingV1.MetaPassRenderingV1 metaPassRenderer;
 
         /// <summary>
         /// Load in necessary resources for the voxel tracer.
@@ -195,11 +176,6 @@ namespace SceneVoxelizer3
             if (voxelizeScene == null)
             {
                 Debug.LogError(string.Format("{0} does not exist!", voxelizeSceneAssetPath));
-                return false;
-            }
-            else if (dilate == null)
-            {
-                Debug.LogError(string.Format("{0} does not exist!", dilateAssetPath));
                 return false;
             }
 
@@ -228,13 +204,6 @@ namespace SceneVoxelizer3
             if (AssetDatabase.IsValidFolder(localAssetSceneDataFolder) == false)
                 AssetDatabase.CreateFolder(localAssetDataFolder, activeScene.name);
         }
-
-        /// <summary>
-        /// Saves a given Texture3D asset to the local voxel asset directory under the current scene name.
-        /// </summary>
-        /// <param name="fileName"></param>
-        /// <param name="tex3D"></param>
-        public void SaveVolumeTexture(string fileName, Texture3D tex3D) => AssetDatabase.CreateAsset(tex3D, localAssetSceneDataFolder + "/" + fileName + ".asset");
 
         //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
         //|||||||||||||||||||||||||||||||||||||||||| STEP 0: SETUP VOXEL CAPTURE ||||||||||||||||||||||||||||||||||||||||||
@@ -293,367 +262,29 @@ namespace SceneVoxelizer3
         // - [Normal Buffer]
         // This is used only when 'normalOrientedHemisphereSampling' is enabled to orient cosine hemispheres when calculating bounce surface lighting.
 
-        public void GenerateVolumes()
-        {
-            float timeBeforeFunction = Time.realtimeSinceStartup;
-
-            //NOTE TO SELF: Keep render texture format high precision.
-            //For instance changing it to an 8 bit for the albedo buffer seems to kills color definition.
-
-            GenerateAlbedoEmissiveNormalBuffers();
-
-            Debug.Log(string.Format("Generating Albedo / Emissive / Normal buffers took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
-        }
-
-        public void RenderScene(CommandBuffer commandBuffer, RenderTexture renderTexture, Camera camera, List<ObjectMetaData> objectsMetaData, Material objectMaterial, int renderPassType)
-        {
-            //calculate the view matrix of the camera that we are using to render the scene with.
-            Matrix4x4 lookMatrix = Matrix4x4.LookAt(camera.transform.position, camera.transform.position + camera.transform.forward, camera.transform.up);
-            Matrix4x4 scaleMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(1, 1, -1));
-            Matrix4x4 viewMatrix = scaleMatrix * lookMatrix.inverse;
-
-            //make the render target active, and setup projection
-            commandBuffer.SetRenderTarget(renderTexture);
-            commandBuffer.SetViewProjectionMatrices(viewMatrix, camera.projectionMatrix);
-            commandBuffer.SetViewport(new Rect(0, 0, renderTexture.width, renderTexture.height));
-            commandBuffer.ClearRenderTarget(true, true, Color.clear); //IMPORTANT: clear contents before we render a new frame
-
-            MaterialPropertyBlock materialPropertyBlock = new MaterialPropertyBlock();
-            materialPropertyBlock.SetVector(ShaderIDs.unity_LightmapST, new Vector4(1, 1, 0, 0)); //cancel out any lightmap UV scaling/offsets.
-
-            //get camera frustum planes
-            Plane[] cameraFrustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
-
-            //iterate through each object we collected
-            for (int i = 0; i < objectsMetaData.Count; i++)
-            {
-                ObjectMetaData objectMetaData = objectsMetaData[i];
-
-                //(IF ENABLED) calculate camera frustum culling during this instance of rendering
-                if(useBoundingBoxCullingForRendering)
-                {
-                    //test the extracted object bounds against the planes, if the object is NOT within the camera frustum planes...
-                    if (!GeometryUtility.TestPlanesAABB(cameraFrustumPlanes, objectMetaData.bounds))
-                        continue; //then continue to the next object to render, no reason to keep fucking around with it because we won't see it
-                }
-
-                //if our object has materials
-                if (objectMetaData.materials != null)
-                {
-                    //iterate through each material on the object
-                    for (int j = 0; j < objectMetaData.materials.Length; j++)
-                    {
-                        //get the meta data we collected earlier of the material
-                        MaterialMetaData materialMetaData = objectMetaData.materials[j];
-
-                        //make sure it isn't empty
-                        if (materialMetaData.isEmpty() == false)
-                        {
-                            int submeshIndex = j; //In unity, submeshes are linked to materials. If a mesh has 2 materials, then there are 2 submeshes. So the submesh index should match the material index.
-
-                            //feed it our buffer
-                            switch(renderPassType)
-                            {
-                                case 0:
-                                    materialPropertyBlock.SetTexture(ShaderIDs._MainTex, materialMetaData.albedoBuffer);
-                                    break;
-                                case 1:
-                                    materialPropertyBlock.SetTexture(ShaderIDs._MainTex, materialMetaData.emissiveBuffer);
-                                    break;
-                                case 2:
-                                    materialPropertyBlock.SetTexture(ShaderIDs._MainTex, materialMetaData.normalBuffer);
-                                    break;
-                            }
-
-                            //draw the mesh in the scene, rendering only its packed buffer colors.
-                            commandBuffer.DrawMesh(objectMetaData.mesh, objectMetaData.transformMatrix, objectMaterial, submeshIndex, 0, materialPropertyBlock);
-                        }
-                    }
-                }
-            }
-
-            //actually renders the scene.
-            Graphics.ExecuteCommandBuffer(commandBuffer);
-        }
-
-        public List<ObjectMetaData> BuildMetaObjectBuffers()
-        {
-            float timeBeforeFunction = Time.realtimeSinceStartup;
-
-            //|||||||||||||||||||||||||||||||||||||| RENDERING VARIABLES SETUP ||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||| RENDERING VARIABLES SETUP ||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||| RENDERING VARIABLES SETUP ||||||||||||||||||||||||||||||||||||||
-
-            //Property values used in the "META" pass in unity shaders.
-            //The "META" pass is used during lightmapping to extract albedo/emission colors from materials in a scene.
-            //Which is exactly what we need!
-            MaterialPropertyBlock materialPropertyBlock = new MaterialPropertyBlock();
-            materialPropertyBlock.SetVector(ShaderIDs.unity_MetaVertexControl, new Vector4(1, 0, 0, 0)); //Only Lightmap UVs
-            materialPropertyBlock.SetFloat(ShaderIDs.unity_OneOverOutputBoost, 1.0f);
-            materialPropertyBlock.SetFloat(ShaderIDs.unity_MaxOutputValue, 0.97f);
-            materialPropertyBlock.SetInt(ShaderIDs.unity_UseLinearSpace, QualitySettings.activeColorSpace == ColorSpace.Linear ? 1 : 0);
-            materialPropertyBlock.SetVector(ShaderIDs.unity_LightmapST, new Vector4(1, 1, 0, 0)); //Cancel out lightmapping scale/offset values if its already lightmapped.
-
-            //Create a projection matrix, mapped to UV space [0,1]
-            Matrix4x4 uvProjection = GL.GetGPUProjectionMatrix(Matrix4x4.Ortho(0, 1, 1, 0, -50, 50), true);
-
-            //fetch our dilation function kernel in the compute shader
-            int ComputeShader_Dilation2D = dilate.FindKernel("ComputeShader_Dilation2D");
-
-            //set the amount of dilation steps it will take
-            dilate.SetInt("KernelSize", dilationPixelSize);
-
-            Material meshNormalMaterial = new Material(voxelBufferMetaNormal);
-
-            //|||||||||||||||||||||||||||||||||||||| CREATE ALBEDO/EMISSION BUFFERS FOR EACH MESH ||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||| CREATE ALBEDO/EMISSION BUFFERS FOR EACH MESH ||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||| CREATE ALBEDO/EMISSION BUFFERS FOR EACH MESH ||||||||||||||||||||||||||||||||||||||
-
-            //fetch all mesh renderers in the scene.
-            MeshRenderer[] meshRenderers = FindObjectsOfType<MeshRenderer>();
-
-            //initalize a dynamic array of object meta data that will be filled up.
-            List<ObjectMetaData> objectsMetaData = new List<ObjectMetaData>();
-
-            //iterate through each mesh renderer in the scene
-            for (int i = 0; i < meshRenderers.Length; i++)
-            {
-                //current mesh renderer element
-                MeshRenderer meshRenderer = meshRenderers[i];
-
-                //get the mesh filter component so we can grab the actual mesh for drawing later.
-                MeshFilter meshFilter = meshRenderer.GetComponent<MeshFilter>();
-
-                //conditional boolean that will determine if we use the mesh or not.
-                bool includeMesh = true;
-
-                //(IF ENABLED) If we only want to include meshes that contribute to GI, saving us some additional computation
-                if (onlyUseGIContributors)
-                    includeMesh = includeMesh && GameObjectUtility.GetStaticEditorFlags(meshRenderer.gameObject).HasFlag(StaticEditorFlags.ContributeGI);
-
-                //(IF ENABLED) If we only want to include meshes that do shadowcasting, saving us from more computation
-                if (onlyUseShadowCasters)
-                    includeMesh = includeMesh && (meshRenderer.shadowCastingMode == ShadowCastingMode.On || meshRenderer.shadowCastingMode != ShadowCastingMode.TwoSided);
-
-                //(IF ENABLED) Only include meshes within voxelization bounds, saving us hopefully from additional computation
-                if (onlyUseMeshesWithinBounds)
-                    includeMesh = includeMesh && ContainBounds(voxelBounds, meshRenderer.bounds);
-
-                bool isMeshLayerValid = objectLayerMask == (objectLayerMask | (1 << meshFilter.gameObject.layer));
-
-                //compute texel density for each mesh renderer
-                int objectTextureResolutionSquare = (int)(meshRenderer.bounds.size.magnitude * texelDensityPerUnit);
-
-                //if it ends up being too low resolution just use the minimum resolution.
-                objectTextureResolutionSquare = Mathf.Max(minimumBufferResolution, objectTextureResolutionSquare);
-
-                //If there is a mesh filter, and we can include the mesh then lets get started!
-                if (meshFilter != null && includeMesh && isMeshLayerValid)
-                {
-                    //get the mesh and it's materials
-                    Mesh mesh = meshFilter.sharedMesh;
-                    Material[] materials = meshRenderer.sharedMaterials;
-
-                    //lets create our object meta data now so we can store some of this data later.
-                    ObjectMetaData objectMetaData = new ObjectMetaData()
-                    {
-                        mesh = mesh,
-                        bounds = meshRenderer.bounds,
-                        transformMatrix = meshRenderer.transform.localToWorldMatrix,
-                        materials = new MaterialMetaData[materials.Length]
-                    };
-
-                    //Create a command buffer so we can render the albedo/emissive buffers of each object.
-                    using (CommandBuffer metaDataCommandBuffer = new CommandBuffer())
-                    {
-                        //setup projection
-                        metaDataCommandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, uvProjection);
-                        metaDataCommandBuffer.SetViewport(new Rect(0, 0, objectTextureResolutionSquare, objectTextureResolutionSquare));
-                        metaDataCommandBuffer.ClearRenderTarget(true, true, Color.clear); //IMPORTANT: clear contents before we render a new frame
-
-                        //iterate through each material the mesh renderer has
-                        for (int j = 0; j < materials.Length; j++)
-                        {
-                            //create a custom material meta data, this will eventually store the object albedo/emissive buffers... if it can get them
-                            MaterialMetaData materialMetaData = new MaterialMetaData();
-
-                            //get the current material
-                            Material material = materials[j];
-
-                            //find the pass index on the material so we can render it.
-                            //if it doesn't exist it will return -1 which means the material doesn't have one... and we will just have to leave materialMetaData empty.
-                            int metaPassIndex = material.FindPass("Meta");
-                            int submeshIndex = j; //In unity, submeshes are linked to materials. If a mesh has 2 materials, then there are 2 submeshes. So the submesh index should match the material index.
-
-                            //The meta pass is used in the "Validate Albedo" scene draw mode... which we don't want so make sure its disabled.
-                            material.DisableKeyword("EDITOR_VISUALIZATION");
-
-                            //if the pass exists...
-                            if (metaPassIndex != -1)
-                            {
-                                //|||||||||||||||||||||||||||||||||||||| ALBEDO BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| ALBEDO BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| ALBEDO BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //here we will render the albedo buffer of the object.
-                                //the unity meta pass basically unwraps the UV1 (Lightmap UVs) to the screen.
-
-                                //create our albedo render texture buffer
-                                materialMetaData.albedoBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaAlbedoFormat);
-                                materialMetaData.albedoBuffer.wrapMode = metaTextureWrapMode;
-                                materialMetaData.albedoBuffer.filterMode = metaTextureFilterMode;
-                                materialMetaData.albedoBuffer.enableRandomWrite = true; //important
-                                materialMetaData.albedoBuffer.Create();
-
-                                //put our render texture to use.
-                                metaDataCommandBuffer.SetRenderTarget(materialMetaData.albedoBuffer);
-
-                                //show only the albedo colors in the meta pass.
-                                materialPropertyBlock.SetVector(ShaderIDs.unity_MetaFragmentControl, new Vector4(1, 0, 0, 0)); //Show Albedo
-
-                                //queue a draw mesh command, only rendering the meta pass on our material.
-                                metaDataCommandBuffer.DrawMesh(mesh, Matrix4x4.identity, material, submeshIndex, metaPassIndex, materialPropertyBlock);
-
-                                //actually renders our albedo buffer to the render target.
-                                Graphics.ExecuteCommandBuffer(metaDataCommandBuffer);
-
-                                //|||||||||||||||||||||||||||||||||||||| DILATE ALBEDO BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| DILATE ALBEDO BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| DILATE ALBEDO BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //Now before we use the albedo buffer... we have to do additional processing on it before its even usable.
-                                //Even if the resolution was crazy high we would get black outlines on the edges of the lightmap UVs which can mess up our albedo results later.
-                                //So we will run a dilation filter, which will basically copy pixels around to mitigate those black outlines.
-
-                                if(performDilation)
-                                {
-                                    //reuse the same buffer, the compute shader will modify the values of this render target.
-                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, materialMetaData.albedoBuffer);
-
-                                    //let the GPU perform dilation
-                                    dilate.Dispatch(ComputeShader_Dilation2D, Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_Y), 1);
-                                }
-
-                                //|||||||||||||||||||||||||||||||||||||| EMISSIVE BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| EMISSIVE BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| EMISSIVE BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //here we will render the emissive buffer of the object.
-                                //the unity meta pass basically unwraps the UV1 (Lightmap UVs) to the screen.
-
-                                //create our emissive render texture buffer
-                                materialMetaData.emissiveBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaEmissiveFormat);
-                                materialMetaData.emissiveBuffer.wrapMode = metaTextureWrapMode;
-                                materialMetaData.emissiveBuffer.filterMode = metaTextureFilterMode;
-                                materialMetaData.emissiveBuffer.enableRandomWrite = true;
-                                materialMetaData.emissiveBuffer.Create();
-
-                                //put our render texture to use.
-                                metaDataCommandBuffer.SetRenderTarget(materialMetaData.emissiveBuffer);
-
-                                //show only the emissive colors in the meta pass.
-                                materialPropertyBlock.SetVector(ShaderIDs.unity_MetaFragmentControl, new Vector4(0, 1, 0, 0)); //Show Emission
-
-                                //queue a draw mesh command, only rendering the meta pass on our material.
-                                metaDataCommandBuffer.DrawMesh(mesh, Matrix4x4.identity, material, submeshIndex, metaPassIndex, materialPropertyBlock);
-
-                                //actually renders our emissive buffer to the render target.
-                                Graphics.ExecuteCommandBuffer(metaDataCommandBuffer);
-
-                                //|||||||||||||||||||||||||||||||||||||| DILATE EMISSIVE BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| DILATE EMISSIVE BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| DILATE EMISSIVE BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //Now before we use the emissive buffer... we have to do additional processing on it before its even usable.
-                                //Even if the resolution was crazy high we would get black outlines on the edges of the lightmap UVs which can mess up our emissive results later.
-                                //So we will run a dilation filter, which will basically copy pixels around to mitigate those black outlines.
-
-                                if (performDilation)
-                                {
-                                    //reuse the same buffer, the compute shader will modify the values of this render target.
-                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, materialMetaData.emissiveBuffer);
-
-                                    //let the GPU perform dilation
-                                    dilate.Dispatch(ComputeShader_Dilation2D, Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_Y), 1);
-                                }
-
-                                //|||||||||||||||||||||||||||||||||||||| NORMAL BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| NORMAL BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| NORMAL BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //here we will render the normal buffer of the object.
-                                //the unity meta pass basically unwraps the UV1 (Lightmap UVs) to the screen.
-
-                                materialMetaData.normalBuffer = new RenderTexture(objectTextureResolutionSquare, objectTextureResolutionSquare, 32, metaNormalFormat);
-                                materialMetaData.normalBuffer.wrapMode = metaTextureWrapMode;
-                                materialMetaData.normalBuffer.filterMode = metaTextureFilterMode;
-                                materialMetaData.normalBuffer.enableRandomWrite = true;
-                                materialMetaData.normalBuffer.Create();
-
-                                metaDataCommandBuffer.SetRenderTarget(materialMetaData.normalBuffer);
-
-                                metaDataCommandBuffer.DrawMesh(mesh, Matrix4x4.identity, meshNormalMaterial, submeshIndex, 0, null);
-
-                                Graphics.ExecuteCommandBuffer(metaDataCommandBuffer);
-
-                                //|||||||||||||||||||||||||||||||||||||| DILATE NORMAL BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| DILATE NORMAL BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //|||||||||||||||||||||||||||||||||||||| DILATE NORMAL BUFFER ||||||||||||||||||||||||||||||||||||||
-                                //Now before we use the normal buffer... we have to do additional processing on it before its even usable.
-                                //Even if the resolution was crazy high we would get black outlines on the edges of the lightmap UVs which can mess up our normal results later.
-                                //So we will run a dilation filter, which will basically copy pixels around to mitigate those black outlines.
-
-                                if (performDilation)
-                                {
-                                    //reuse the same buffer, the compute shader will modify the values of this render target.
-                                    dilate.SetTexture(ComputeShader_Dilation2D, ShaderIDs.Write2D, materialMetaData.normalBuffer);
-
-                                    //let the GPU perform dilation
-                                    dilate.Dispatch(ComputeShader_Dilation2D, Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_X), Mathf.CeilToInt(objectTextureResolutionSquare / THREAD_GROUP_SIZE_Y), 1);
-                                }
-                            }
-
-                            //after rendering both the albedo/emissive lets store the results into our object meta data for the current material that we rendered.
-                            //NOTE: its also possible here that there wasn't a meta pass so that means 'materialMetaData' is empty.
-                            objectMetaData.materials[j] = materialMetaData;
-                        }
-                    }
-
-                    //collect the extracted meta data from the current mesh so we can render it later.
-                    objectsMetaData.Add(objectMetaData);
-                }
-            }
-
-            //|||||||||||||||||||||||||||||||||||||| (DEBUG) LOG META DATA MEMORY USAGE ||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||| (DEBUG) LOG META DATA MEMORY USAGE ||||||||||||||||||||||||||||||||||||||
-            //|||||||||||||||||||||||||||||||||||||| (DEBUG) LOG META DATA MEMORY USAGE ||||||||||||||||||||||||||||||||||||||
-
-            long memorySize = 0;
-            uint textures = 0;
-
-            for (int i = 0; i < objectsMetaData.Count; i++)
-            {
-                memorySize += objectsMetaData[i].GetDebugMemorySize();
-                textures += (uint)(objectsMetaData[i].materials.Length * 3);
-            }
-
-            Debug.Log(string.Format("Meta Pass Extraction took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
-            Debug.Log(string.Format("Meta Textures {0} | Total Runtime Memory: {1} MB [{2} B]", textures, memorySize / (1024.0f * 1024.0f), memorySize));
-
-            return objectsMetaData;
-        }
-
-        /// <summary>
-        /// Generates a 3D texture of the scene, renders it with the given "replacementShader", and saves the asset into "filename".
-        /// </summary>
-        /// <param name="replacementShader"></param>
-        /// <param name="filename"></param>
-        /// <param name="rtFormat"></param>
-        /// <param name="texFormat"></param>
         [ContextMenu("GenerateAlbedoEmissiveNormalBuffers")]
         public void GenerateAlbedoEmissiveNormalBuffers()
         {
-            UpdateProgressBar("Preparing to generate albedo/emissive/normal...", 0.5f);
-
-            float timeBeforeFunction = Time.realtimeSinceStartup;
+            metaPassRenderer = new MetaPassRenderingV1.MetaPassRenderingV1();
+            metaPassRenderer.dilationPixelSize = dilationPixelSize;
+            metaPassRenderer.minimumBufferResolution = minimumBufferResolution;
+            metaPassRenderer.objectLayerMask = objectLayerMask;
+            metaPassRenderer.onlyUseGIContributors = onlyUseGIContributors;
+            metaPassRenderer.onlyUseMeshesWithinBounds = onlyUseMeshesWithinBounds;
+            metaPassRenderer.onlyUseShadowCasters = onlyUseShadowCasters;
+            metaPassRenderer.performDilation = performDilation;
+            metaPassRenderer.texelDensityPerUnit = texelDensityPerUnit;
+            metaPassRenderer.useBilinearFiltering = useBilinearFiltering;
+            metaPassRenderer.useBoundingBoxCullingForRendering = useBoundingBoxCullingForRendering;
+            metaPassRenderer.sceneObjectsBounds = voxelBounds;
+            metaPassRenderer.doubleSidedGeometry = doubleSidedGeometry;
 
             if (HasResources() == false)
                 return; //if both resource gathering functions returned false, that means something failed so don't continue
+
+            UpdateProgressBar("Preparing to generate albedo/emissive/normal...", 0.5f);
+
+            float timeBeforeFunction = Time.realtimeSinceStartup;
 
             SetupAssetFolders(); //Setup a local "scene" folder in our local asset directory if it doesn't already exist.
             CreateVoxelCamera(); //Create our voxel camera rig
@@ -662,7 +293,7 @@ namespace SceneVoxelizer3
 
             UpdateProgressBar("Building object meta buffers...", 0.5f);
 
-            List<ObjectMetaData> objectsMetaData = BuildMetaObjectBuffers();
+            List<MetaPassRenderingV1.ObjectMetaData> objectMetaData = metaPassRenderer.ExtractSceneObjectMetaBuffers();
 
             //|||||||||||||||||||||||||||||||||||||| PREPARE SCENE VOXELIZATION ||||||||||||||||||||||||||||||||||||||
             //|||||||||||||||||||||||||||||||||||||| PREPARE SCENE VOXELIZATION ||||||||||||||||||||||||||||||||||||||
@@ -695,9 +326,6 @@ namespace SceneVoxelizer3
             combinedSceneVoxel.filterMode = FilterMode.Point;
             combinedSceneVoxel.enableRandomWrite = true;
             combinedSceneVoxel.Create();
-
-            Material objectMaterial = new Material(voxelBufferMeta);
-            objectMaterial.SetInt("_CullMode", doubleSidedGeometry ? (int)CullMode.Off : (int)CullMode.Back);
 
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
             //||||||||||||||||||||||||||||||||| X AXIS SETUP |||||||||||||||||||||||||||||||||
@@ -748,7 +376,7 @@ namespace SceneVoxelizer3
                     {
                         //step through the scene on the X axis
                         voxelCameraGameObject.transform.position = transform.position - new Vector3(voxelSize.x / 2.0f, 0, 0) + new Vector3(xOffset * i, 0, 0);
-                        RenderScene(sceneAlbedoCommandBuffer, voxelCameraSlice, voxelCamera, objectsMetaData, objectMaterial, j);
+                        metaPassRenderer.RenderScene(objectMetaData, voxelCamera, voxelCameraSlice, j);
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
@@ -767,7 +395,7 @@ namespace SceneVoxelizer3
                     {
                         //step through the scene on the X axis
                         voxelCameraGameObject.transform.position = transform.position + new Vector3(voxelSize.x / 2.0f, 0, 0) - new Vector3(xOffset * i, 0, 0);
-                        RenderScene(sceneAlbedoCommandBuffer, voxelCameraSlice, voxelCamera, objectsMetaData, objectMaterial, j);
+                        metaPassRenderer.RenderScene(objectMetaData, voxelCamera, voxelCameraSlice, j);
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
@@ -802,7 +430,7 @@ namespace SceneVoxelizer3
                     {
                         //step through the scene on the Y axis
                         voxelCameraGameObject.transform.position = transform.position - new Vector3(0, voxelSize.y / 2.0f, 0) + new Vector3(0, yOffset * i, 0);
-                        RenderScene(sceneAlbedoCommandBuffer, voxelCameraSlice, voxelCamera, objectsMetaData, objectMaterial, j);
+                        metaPassRenderer.RenderScene(objectMetaData, voxelCamera, voxelCameraSlice, j);
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
@@ -821,7 +449,7 @@ namespace SceneVoxelizer3
                     {
                         //step through the scene on the Y axis
                         voxelCameraGameObject.transform.position = transform.position + new Vector3(0, voxelSize.y / 2.0f, 0) - new Vector3(0, yOffset * i, 0);
-                        RenderScene(sceneAlbedoCommandBuffer, voxelCameraSlice, voxelCamera, objectsMetaData, objectMaterial, j);
+                        metaPassRenderer.RenderScene(objectMetaData, voxelCamera, voxelCameraSlice, j);
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
@@ -856,7 +484,7 @@ namespace SceneVoxelizer3
                     {
                         //step through the scene on the Z axis
                         voxelCameraGameObject.transform.position = transform.position - new Vector3(0, 0, voxelSize.z / 2.0f) + new Vector3(0, 0, zOffset * i);
-                        RenderScene(sceneAlbedoCommandBuffer, voxelCameraSlice, voxelCamera, objectsMetaData, objectMaterial, j);
+                        metaPassRenderer.RenderScene(objectMetaData, voxelCamera, voxelCameraSlice, j);
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
@@ -875,7 +503,7 @@ namespace SceneVoxelizer3
                     {
                         //step through the scene on the Z axis
                         voxelCameraGameObject.transform.position = transform.position + new Vector3(0, 0, voxelSize.z / 2.0f) - new Vector3(0, 0, zOffset * i);
-                        RenderScene(sceneAlbedoCommandBuffer, voxelCameraSlice, voxelCamera, objectsMetaData, objectMaterial, j);
+                        metaPassRenderer.RenderScene(objectMetaData, voxelCamera, voxelCameraSlice, j);
 
                         //feed the compute shader the appropriate data, and do a dispatch so it can accumulate the scene slice into a 3D texture.
                         voxelizeScene.SetInt(ShaderIDs.AxisIndex, i);
@@ -932,88 +560,11 @@ namespace SceneVoxelizer3
             //get rid of this junk, don't need it no more.
             CleanupVoxelCamera();
 
-            float timeBeforeCleanUp = Time.realtimeSinceStartup;
+            metaPassRenderer.CleanUpSceneObjectMetaBuffers(objectMetaData);
 
-            for (int i = 0; i < objectsMetaData.Count; i++)
-                objectsMetaData[i].CleanUp();
-
-            Debug.Log(string.Format("Clean Up took {0} seconds.", Time.realtimeSinceStartup - timeBeforeCleanUp));
             Debug.Log(string.Format("Total Function Time: {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
 
             CloseProgressBar();
-        }
-
-        //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| LOD FUNCTIONS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-        //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| LOD FUNCTIONS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-        //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| LOD FUNCTIONS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-
-        /// <summary>
-        /// Gets an array of renderer objects after LOD0 on an LODGroup.
-        /// </summary>
-        /// <param name="lodGroup"></param>
-        /// <returns></returns>
-        public static Renderer[] GetRenderersAfterLOD0(LODGroup lodGroup)
-        {
-            //get LODGroup lods
-            LOD[] lods = lodGroup.GetLODs();
-
-            //If there are no LODs...
-            //Or there is only one LOD level...
-            //Ignore this LODGroup and return nothing (we only want the renderers that are used for the other LOD groups)
-            if (lods.Length < 2)
-                return null;
-
-            //Initalize a dynamic array list of renderers that will be filled
-            List<Renderer> renderers = new List<Renderer>();
-
-            //Skip the first LOD level...
-            //And iterate through the rest of the LOD groups to get it's renderers
-            for (int i = 1; i < lods.Length; i++)
-            {
-                for (int j = 0; j < lods[i].renderers.Length; j++)
-                {
-                    Renderer lodRenderer = lods[i].renderers[j];
-
-                    if (lodRenderer != null)
-                        renderers.Add(lodRenderer);
-                }
-            }
-
-            //If no renderers were found, then return nothing.
-            if (renderers.Count <= 0)
-                return null;
-
-            return renderers.ToArray();
-        }
-
-        /// <summary>
-        /// Returns a list of hashes for the given renderer array.
-        /// </summary>
-        /// <param name="renderers"></param>
-        /// <returns></returns>
-        public static int[] GetRendererHashCodes(Renderer[] renderers)
-        {
-            int[] hashCodeArray = new int[renderers.Length];
-
-            for (int i = 0; i < hashCodeArray.Length; i++)
-                hashCodeArray[i] = renderers[i].GetHashCode();
-
-            return hashCodeArray;
-        }
-
-        /// <summary>
-        /// Returns a hash code array of renderers found after LOD0 in a given LOD group.
-        /// </summary>
-        /// <param name="lodGroup"></param>
-        /// <returns></returns>
-        public static int[] GetRendererHashCodesAfterLOD0(LODGroup lodGroup)
-        {
-            Renderer[] renderers = GetRenderersAfterLOD0(lodGroup);
-
-            if (renderers == null || renderers.Length <= 1)
-                return null;
-            else
-                return GetRendererHashCodes(renderers);
         }
 
         //|||||||||||||||||||||||||||||||||||||||||||||||||||||||| GIZMOS ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
@@ -1043,7 +594,5 @@ namespace SceneVoxelizer3
             else
                 computeShader.DisableKeyword(keyword);
         }
-
-        public static bool ContainBounds(Bounds bounds, Bounds target) => bounds.Contains(target.center) || bounds.Contains(target.min) || bounds.Contains(target.max);
     }
 }

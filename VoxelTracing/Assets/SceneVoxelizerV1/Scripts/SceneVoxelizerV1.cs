@@ -65,9 +65,9 @@ namespace SceneVoxelizer1
         private static int THREAD_GROUP_SIZE_Z = 8;
 
         private static string localAssetFolder = "Assets/SceneVoxelizerV1";
-        private static string localAssetComputeFolder = "Assets/SceneVoxelizerV1/ComputeShaders";
+        private static string localAssetShadersFolder = "Assets/SceneVoxelizerV1/Shaders";
         private static string localAssetDataFolder = "Assets/SceneVoxelizerV1/Data";
-        private string voxelizeSceneAssetPath => localAssetComputeFolder + "/VoxelizeScene.compute";
+        private string voxelizeSceneAssetPath => localAssetShadersFolder + "/VoxelizeScene.compute";
         private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
         private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
         private string voxelAssetPath => string.Format("{0}/SceneVoxelizerV1_{1}.asset", localAssetSceneDataFolder, voxelName);

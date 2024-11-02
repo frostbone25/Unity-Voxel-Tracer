@@ -51,9 +51,9 @@ namespace ObjectMetaBufferExtractor
         private static int THREAD_GROUP_SIZE_Y = 8;
 
         private static string localAssetFolder = "Assets/ObjectMetaBufferExtractor";
-        private static string localAssetComputeFolder = "Assets/ObjectMetaBufferExtractor/ComputeShaders";
+        private static string localAssetShadersFolder = "Assets/ObjectMetaBufferExtractor/Shaders";
         private static string localAssetDataFolder = "Assets/ObjectMetaBufferExtractor/Data";
-        private string dilateAssetPath => localAssetComputeFolder + "/Dilation.compute";
+        private string dilateAssetPath => localAssetShadersFolder + "/Dilation.compute";
         private UnityEngine.SceneManagement.Scene activeScene => EditorSceneManager.GetActiveScene();
         private string localAssetSceneDataFolder => localAssetDataFolder + "/" + activeScene.name;
 
