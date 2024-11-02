@@ -105,7 +105,6 @@ namespace MetaPassRenderingV2
             sceneObjectShader = Shader.Find("MetaPassRenderingV2/SceneObjectShader");
             sceneObjectMaterial = new Material(sceneObjectShader);
             sceneObjectMaterialPropertyBlock = new MaterialPropertyBlock();
-            sceneObjectMaterialPropertyBlock.SetInt("_CullMode", doubleSidedGeometry ? (int)CullMode.Off : (int)CullMode.Back);
             renderTextureConverter = new RenderTextureConverterV2();
 
             if (dilate == null)
@@ -458,6 +457,9 @@ namespace MetaPassRenderingV2
 
                                 //feed it our albedo buffer
                                 sceneObjectMaterialPropertyBlock.SetTexture(ShaderIDs._MainTex, materialMetaData.packedMetaBuffer);
+
+                                //configure face culling
+                                sceneObjectMaterial.SetInt("_CullMode", doubleSidedGeometry ? (int)CullMode.Off : (int)CullMode.Back);
 
                                 //draw the mesh in the scene, rendering only its raw albedo colors.
                                 sceneCommandBuffer.DrawMesh(objectMetaData.mesh, objectMetaData.transformMatrix, sceneObjectMaterial, submeshIndex, 0, sceneObjectMaterialPropertyBlock);
