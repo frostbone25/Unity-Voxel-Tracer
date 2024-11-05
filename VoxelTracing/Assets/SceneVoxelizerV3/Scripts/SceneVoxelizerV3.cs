@@ -46,6 +46,9 @@ namespace SceneVoxelizer3
         public string voxelName = "Voxel"; //Name of the asset
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f); //Size of the volume
         public float voxelDensitySize = 1.0f; //Size of each voxel (Smaller = More Voxels, Larger = Less Voxels)
+        public bool generateMipsForAlbedo = false;
+        public bool generateMipsForEmissive = false;
+        public bool generateMipsForNormal = false;
 
         [Header("Meta Pass Properties")]
         //this controls how many "pixels" per unit an object will have.
@@ -528,7 +531,7 @@ namespace SceneVoxelizer3
                             Debug.Log(string.Format("Rendering Albedo took {0} seconds.", Time.realtimeSinceStartup - timeBeforeRendering));
                             timeBeforeVolumeSaving = Time.realtimeSinceStartup;
                             //RenderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName));
-                            renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName));
+                            renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName), generateMipsForAlbedo);
                             //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName), voxelAlbedoBufferFormat, true);
                             //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_albedo.asset", localAssetSceneDataFolder, voxelName), GraphicsFormat.R8G8B8A8_UNorm);
                             Debug.Log(string.Format("Albedo Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
@@ -537,7 +540,7 @@ namespace SceneVoxelizer3
                             Debug.Log(string.Format("Rendering Emissive took {0} seconds.", Time.realtimeSinceStartup - timeBeforeRendering));
                             timeBeforeVolumeSaving = Time.realtimeSinceStartup;
                             //RenderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName));
-                            renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName));
+                            renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName), generateMipsForEmissive);
                             //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_emissive.asset", localAssetSceneDataFolder, voxelName), voxelEmissiveBufferFormat, true);
                             Debug.Log(string.Format("Emissive Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
                             break;
@@ -545,7 +548,7 @@ namespace SceneVoxelizer3
                             Debug.Log(string.Format("Rendering Normal took {0} seconds.", Time.realtimeSinceStartup - timeBeforeRendering));
                             timeBeforeVolumeSaving = Time.realtimeSinceStartup;
                             //RenderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName));
-                            renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName));
+                            renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName), generateMipsForNormal);
                             //renderTextureConverterV2.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, string.Format("{0}/SceneVoxelizerV3_{1}_normal.asset", localAssetSceneDataFolder, voxelName), voxelNormalBufferFormat, true);
                             Debug.Log(string.Format("Normal Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
                             break;

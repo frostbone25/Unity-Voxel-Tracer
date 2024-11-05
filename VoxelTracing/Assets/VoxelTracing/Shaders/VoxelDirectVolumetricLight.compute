@@ -1,6 +1,12 @@
-#define THREAD_GROUP_SIZE_X 8
-#define THREAD_GROUP_SIZE_Y 8
-#define THREAD_GROUP_SIZE_Z 8
+//#define THREAD_GROUP_SIZE_X 8
+//#define THREAD_GROUP_SIZE_Y 8
+//#define THREAD_GROUP_SIZE_Z 8
+//512 threads
+
+#define THREAD_GROUP_SIZE_X 4
+#define THREAD_GROUP_SIZE_Y 4
+#define THREAD_GROUP_SIZE_Z 4
+//64 threads
 
 //https://github.com/TwoTailsGames/Unity-Built-in-Shaders/blob/master/CGIncludes/UnityCG.cginc
 //From UnityCG.cginc

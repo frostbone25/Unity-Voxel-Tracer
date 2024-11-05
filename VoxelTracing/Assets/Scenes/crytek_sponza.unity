@@ -504,87 +504,6 @@ MonoBehaviour:
   objectLayerMask:
     serializedVersion: 2
     m_Bits: 1
---- !u!1 &570566907
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 570566908}
-  - component: {fileID: 570566910}
-  - component: {fileID: 570566909}
-  m_Layer: 0
-  m_Name: Cube
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &570566908
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 570566907}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 189, y: 79.3, z: 116.5}
-  m_Children: []
-  m_Father: {fileID: 1425651869}
-  m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!23 &570566909
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 570566907}
-  m_Enabled: 1
-  m_CastShadows: 0
-  m_ReceiveShadows: 0
-  m_DynamicOccludee: 1
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 2100000, guid: e7f2e400ec2787640aab03aa3aed1d57, type: 2}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &570566910
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 570566907}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!1 &756487864
 GameObject:
   m_ObjectHideFlags: 0
@@ -665,6 +584,168 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 756487864}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &781055716
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 781055717}
+  - component: {fileID: 781055719}
+  - component: {fileID: 781055718}
+  m_Layer: 0
+  m_Name: Voxel Preview
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &781055717
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 781055716}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 189, y: 79.3, z: 116.5}
+  m_Children: []
+  m_Father: {fileID: 1425651869}
+  m_RootOrder: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!23 &781055718
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 781055716}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: febc5a7a0e09e8c4cb862f31370f4339, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 1
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!33 &781055719
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 781055716}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &838728370
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 838728371}
+  - component: {fileID: 838728373}
+  - component: {fileID: 838728372}
+  m_Layer: 0
+  m_Name: Volumetric Fog Preview
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!4 &838728371
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 838728370}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 189, y: 79.3, z: 116.5}
+  m_Children: []
+  m_Father: {fileID: 1425651869}
+  m_RootOrder: 1
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!23 &838728372
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 838728370}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 69a24e36c3735cc4aa0ec7cd148ed2ee, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 1
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!33 &838728373
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 838728370}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!1 &1013582310
 GameObject:
@@ -935,16 +1016,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 881990ab67164b44aa600ec3f1582e57, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  voxelName: Sponza
+  voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
-  voxelDensitySize: 0.5
-  texelDensityPerUnit: 1
+  voxelDensitySize: 1
+  texelDensityPerUnit: 4
   minimumBufferResolution: 16
-  onlyIncludeGIContributors: 1
+  performDilation: 1
+  dilationPixelSize: 128
+  blendAlbedoVoxelSlices: 1
+  blendEmissiveVoxelSlices: 1
+  blendNormalVoxelSlices: 1
+  doubleSidedGeometry: 1
+  onlyUseGIContributors: 1
+  onlyUseShadowCasters: 1
+  onlyUseMeshesWithinBounds: 1
+  useBoundingBoxCullingForRendering: 1
+  objectLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
   enableEnvironmentLighting: 1
   environmentResolution: 128
   customEnvironmentMap: {fileID: 0}
-  volumetricTracing: 1
+  lightLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  enableVolumetricTracing: 1
   directSurfaceSamples: 8192
   directVolumetricSamples: 8192
   environmentSurfaceSamples: 8192
@@ -957,11 +1053,12 @@ MonoBehaviour:
   indirectIntensity: 1
   environmentIntensity: 1
   emissiveIntensity: 1
+  halfPrecisionLighting: 0
   enableGPU_Readback_Limit: 1
   GPU_Readback_Limit: 1
-  volumetricDirectGaussianSamples: 4
-  volumetricBounceGaussianSamples: 2
-  volumetricEnvironmentGaussianSamples: 2
+  volumetricDirectGaussianSamples: 3
+  volumetricBounceGaussianSamples: 3
+  volumetricEnvironmentGaussianSamples: 3
   previewBounds: 1
 --- !u!4 &1425651869
 Transform:
@@ -974,7 +1071,8 @@ Transform:
   m_LocalPosition: {x: 2.6, y: 32.5, z: -1.9}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
-  - {fileID: 570566908}
+  - {fileID: 781055717}
+  - {fileID: 838728371}
   m_Father: {fileID: 0}
   m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -993,6 +1091,9 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
+  generateMipsForAlbedo: 1
+  generateMipsForEmissive: 0
+  generateMipsForNormal: 0
   texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1
@@ -1024,6 +1125,7 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
+  generateMips: 1
   blendVoxelSlices: 1
   previewBounds: 0
 --- !u!114 &1425651872
@@ -1041,6 +1143,9 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
+  generateMipsForAlbedo: 0
+  generateMipsForEmissive: 0
+  generateMipsForNormal: 0
   blendAlbedoVoxelSlices: 1
   blendEmissiveVoxelSlices: 1
   blendNormalVoxelSlices: 1
@@ -1061,6 +1166,9 @@ MonoBehaviour:
   voxelName: Voxel
   voxelSize: {x: 189, y: 79.3, z: 116.5}
   voxelDensitySize: 1
+  generateMipsForAlbedo: 0
+  generateMipsForEmissive: 0
+  generateMipsForNormal: 0
   texelDensityPerUnit: 8
   minimumBufferResolution: 16
   performDilation: 1

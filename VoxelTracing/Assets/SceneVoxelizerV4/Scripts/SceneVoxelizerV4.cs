@@ -46,6 +46,9 @@ namespace SceneVoxelizer4
         public string voxelName = "Voxel"; //Name of the asset
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f); //Size of the volume
         public float voxelDensitySize = 1.0f; //Size of each voxel (Smaller = More Voxels, Larger = Less Voxels)
+        public bool generateMipsForAlbedo = false;
+        public bool generateMipsForEmissive = false;
+        public bool generateMipsForNormal = false;
 
         [Header("Meta Pass Properties")]
         //this controls how many "pixels" per unit an object will have.
@@ -673,9 +676,9 @@ namespace SceneVoxelizer4
 
             float timeBeforeVolumeSaving = Time.realtimeSinceStartup;
 
-            renderTextureConverter.SaveRenderTexture3DAsTexture3D(sceneAlbedo, string.Format("{0}/SceneVoxelizerV4_{1}_albedo.asset", localAssetSceneDataFolder, voxelName));
-            renderTextureConverter.SaveRenderTexture3DAsTexture3D(sceneEmissive, string.Format("{0}/SceneVoxelizerV4_{1}_emissive.asset", localAssetSceneDataFolder, voxelName));
-            renderTextureConverter.SaveRenderTexture3DAsTexture3D(sceneNormal, string.Format("{0}/SceneVoxelizerV4_{1}_normal.asset", localAssetSceneDataFolder, voxelName));
+            renderTextureConverter.SaveRenderTexture3DAsTexture3D(sceneAlbedo, string.Format("{0}/SceneVoxelizerV4_{1}_albedo.asset", localAssetSceneDataFolder, voxelName), generateMipsForAlbedo);
+            renderTextureConverter.SaveRenderTexture3DAsTexture3D(sceneEmissive, string.Format("{0}/SceneVoxelizerV4_{1}_emissive.asset", localAssetSceneDataFolder, voxelName), generateMipsForEmissive);
+            renderTextureConverter.SaveRenderTexture3DAsTexture3D(sceneNormal, string.Format("{0}/SceneVoxelizerV4_{1}_normal.asset", localAssetSceneDataFolder, voxelName), generateMipsForNormal);
 
             Debug.Log(string.Format("Volume Saving took {0} seconds.", Time.realtimeSinceStartup - timeBeforeVolumeSaving));
 

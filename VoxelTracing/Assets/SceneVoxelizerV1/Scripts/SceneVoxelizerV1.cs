@@ -45,6 +45,7 @@ namespace SceneVoxelizer1
         public string voxelName = "Voxel"; //Name of the asset
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f); //Size of the volume
         public float voxelDensitySize = 1.0f; //Size of each voxel (Smaller = More Voxels, Larger = Less Voxels)
+        public bool generateMips = false;
 
         [Header("Voxelization Rendering")]
         public bool blendVoxelSlices = false;
@@ -389,7 +390,7 @@ namespace SceneVoxelizer1
             //||||||||||||||||||||||||||||||||| RENDER TEXTURE 3D ---> TEXTURE 3D CONVERSION |||||||||||||||||||||||||||||||||
             //final step, save our accumulated 3D texture to the disk.
 
-            renderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, voxelAssetPath);
+            renderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, voxelAssetPath, generateMips);
 
             Debug.Log(string.Format("Generating {0} took {1} seconds.", voxelAssetPath, Time.realtimeSinceStartup - timeBeforeFunction));
 

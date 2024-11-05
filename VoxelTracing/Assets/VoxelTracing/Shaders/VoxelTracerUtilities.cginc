@@ -21,10 +21,10 @@ float3 EstimateSurfaceNormal(Texture3D<float4> sceneColor, float3 texCoord, floa
     float3 delta = 1.0 / volumeResolution.xyz;
 
     // Sample the 3D texture at the current position and its neighboring positions
-    float center = TEX3D_SHARP(sceneColor, texCoord).a;
-    float dx = TEX3D_SHARP(sceneColor, texCoord + float3(delta.x, 0.0, 0.0)).a;
-    float dy = TEX3D_SHARP(sceneColor, texCoord + float3(0.0, delta.y, 0.0)).a;
-    float dz = TEX3D_SHARP(sceneColor, texCoord + float3(0.0, 0.0, delta.z)).a;
+    float center = TEX3D_SHARP(sceneColor, texCoord, 0).a;
+    float dx = TEX3D_SHARP(sceneColor, texCoord + float3(delta.x, 0.0, 0.0), 0).a;
+    float dy = TEX3D_SHARP(sceneColor, texCoord + float3(0.0, delta.y, 0.0), 0).a;
+    float dz = TEX3D_SHARP(sceneColor, texCoord + float3(0.0, 0.0, delta.z), 0).a;
 
     // Compute the gradient by subtracting neighboring samples
     float3 gradient = float3(dx - center, dy - center, dz - center);

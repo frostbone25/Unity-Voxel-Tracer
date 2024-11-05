@@ -11,9 +11,15 @@
 //|||||||||||||||||||||||||||||||||||||| DEFINES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| DEFINES ||||||||||||||||||||||||||||||||||||||
 
-#define THREAD_GROUP_SIZE_X 8
-#define THREAD_GROUP_SIZE_Y 8
-#define THREAD_GROUP_SIZE_Z 8
+//#define THREAD_GROUP_SIZE_X 8
+//#define THREAD_GROUP_SIZE_Y 8
+//#define THREAD_GROUP_SIZE_Z 8
+//512 threads
+
+#define THREAD_GROUP_SIZE_X 4
+#define THREAD_GROUP_SIZE_Y 4
+#define THREAD_GROUP_SIZE_Z 4
+//64 threads
 
 //https://github.com/TwoTailsGames/Unity-Built-in-Shaders/blob/master/CGIncludes/UnityCG.cginc
 //From UnityCG.cginc
@@ -39,13 +45,6 @@
 #include "VoxelTracerUtilities.cginc"
 #include "UnityLights.cginc"
 
-//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
-//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
-//|||||||||||||||||||||||||||||||||||||| KEYWORDS ||||||||||||||||||||||||||||||||||||||
-
-#pragma multi_compile_local _ NORMAL_ORIENTED_HEMISPHERE_SAMPLING
-#pragma multi_compile_local _ MULTIPLY_ALBEDO
-
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
 //|||||||||||||||||||||||||||||||||||||| VARIABLES ||||||||||||||||||||||||||||||||||||||
@@ -58,10 +57,9 @@ RWTexture3D<float4> Write;
 float3 VolumePosition;
 float3 VolumeSize;
 float3 VolumeResolution;
+int VolumeMipCount;
 
 int MaxDirectSamples;
-
-float AlbedoBoost;
 
 RWStructuredBuffer<int> DummyComputeBuffer;
 
@@ -497,12 +495,6 @@ void ComputeShader_TraceSurfaceDirectLight(uint3 id : SV_DispatchThreadID)
                 }
             }
         }
-    #endif
-
-    #if defined (MULTIPLY_ALBEDO)
-        //multiply accumulated light with the scene material colors
-        //finalColor.rgb *= sceneAlbedo.rgb * AlbedoBoost;
-        finalColor.rgb *= (sceneAlbedo.rgb / UNITY_PI) * AlbedoBoost; //energy conserving lambertian BDRF
     #endif
 
     //accumulate samples into the render target

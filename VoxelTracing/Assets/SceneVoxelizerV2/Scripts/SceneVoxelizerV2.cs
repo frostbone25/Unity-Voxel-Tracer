@@ -46,6 +46,9 @@ namespace SceneVoxelizer2
         public string voxelName = "Voxel"; //Name of the asset
         public Vector3 voxelSize = new Vector3(10.0f, 10.0f, 10.0f); //Size of the volume
         public float voxelDensitySize = 1.0f; //Size of each voxel (Smaller = More Voxels, Larger = Less Voxels)
+        public bool generateMipsForAlbedo = false;
+        public bool generateMipsForEmissive = false;
+        public bool generateMipsForNormal = false;
 
         [Header("Rendering")]
         public bool blendAlbedoVoxelSlices = false;
@@ -89,9 +92,6 @@ namespace SceneVoxelizer2
         private Shader cameraVoxelEmissiveCullBackShader => Shader.Find("SceneVoxelizerV2/VoxelBufferEmissiveCullBack");
         private Shader cameraVoxelEmissiveShader => doubleSidedGeometry ? cameraVoxelEmissiveCullOffShader : cameraVoxelEmissiveCullBackShader;
         private Shader cameraVoxelHiddenShader => Shader.Find("SceneVoxelizerV2/VoxelBufferHidden");
-
-        private static TextureFormat textureFormat = TextureFormat.RGBAFloat;
-        private static RenderTextureFormat renderTextureFormat = RenderTextureFormat.ARGBFloat;
 
         private RenderTextureConverterV2 renderTextureConverter => new RenderTextureConverterV2();
 
@@ -200,9 +200,9 @@ namespace SceneVoxelizer2
             //NOTE TO SELF: Keep render texture format high precision.
             //For instance changing it to an 8 bit for the albedo buffer seems to kills color definition.
 
-            GenerateVolume(cameraVoxelAlbedoShader, voxelAlbedoBufferFileName, renderTextureFormat, TextureFormat.RGBA32, blendAlbedoVoxelSlices);
-            GenerateVolume(cameraVoxelNormalShader, voxelNormalBufferFileName, renderTextureFormat, textureFormat, blendNormalVoxelSlices);
-            GenerateVolume(cameraVoxelEmissiveShader, voxelEmissiveBufferFileName, renderTextureFormat, textureFormat, blendEmissiveVoxelSlices);
+            GenerateVolume(cameraVoxelAlbedoShader, voxelAlbedoBufferFileName, RenderTextureFormat.ARGBHalf, blendAlbedoVoxelSlices, generateMipsForAlbedo);
+            GenerateVolume(cameraVoxelNormalShader, voxelNormalBufferFileName, RenderTextureFormat.ARGBHalf, blendNormalVoxelSlices, generateMipsForEmissive);
+            GenerateVolume(cameraVoxelEmissiveShader, voxelEmissiveBufferFileName, RenderTextureFormat.ARGBHalf, blendEmissiveVoxelSlices, generateMipsForNormal);
 
             Debug.Log(string.Format("Generating Albedo / Normal / Emissive buffers took {0} seconds.", Time.realtimeSinceStartup - timeBeforeFunction));
         }
@@ -214,7 +214,7 @@ namespace SceneVoxelizer2
         /// <param name="filename"></param>
         /// <param name="rtFormat"></param>
         /// <param name="texFormat"></param>
-        public void GenerateVolume(Shader replacementShader, string filename, RenderTextureFormat rtFormat, TextureFormat savedTextureFormat, bool blendVoxelSlices)
+        public void GenerateVolume(Shader replacementShader, string filename, RenderTextureFormat renderTextureFormat, bool blendVoxelSlices, bool generateMips)
         {
             if (HasResources() == false)
                 return; //if both resource gathering functions returned false, that means something failed so don't continue
@@ -281,7 +281,7 @@ namespace SceneVoxelizer2
             //captures the scene on the X axis.
 
             //create a 2D render texture based off our voxel resolution to capture the scene in the X axis.
-            RenderTexture voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, renderTextureDepthBits, rtFormat);
+            RenderTexture voxelCameraSlice = new RenderTexture(voxelResolution.z, voxelResolution.y, renderTextureDepthBits, renderTextureFormat);
             voxelCameraSlice.filterMode = FilterMode.Point;
             voxelCameraSlice.wrapMode = TextureWrapMode.Clamp;
             voxelCameraSlice.enableRandomWrite = true;
@@ -335,7 +335,7 @@ namespace SceneVoxelizer2
             //captures the scene on the Y axis.
 
             //create a 2D render texture based off our voxel resolution to capture the scene in the Y axis.
-            voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.z, renderTextureDepthBits, rtFormat);
+            voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.z, renderTextureDepthBits, renderTextureFormat);
             voxelCameraSlice.filterMode = FilterMode.Point;
             voxelCameraSlice.wrapMode = TextureWrapMode.Clamp;
             voxelCameraSlice.enableRandomWrite = true;
@@ -389,7 +389,7 @@ namespace SceneVoxelizer2
             //captures the scene on the Z axis.
 
             //create a 2D render texture based off our voxel resolution to capture the scene in the Z axis.
-            voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.y, renderTextureDepthBits, rtFormat);
+            voxelCameraSlice = new RenderTexture(voxelResolution.x, voxelResolution.y, renderTextureDepthBits, renderTextureFormat);
             voxelCameraSlice.filterMode = FilterMode.Point;
             voxelCameraSlice.wrapMode = TextureWrapMode.Clamp;
             voxelCameraSlice.enableRandomWrite = true;
@@ -443,7 +443,7 @@ namespace SceneVoxelizer2
             //||||||||||||||||||||||||||||||||| RENDER TEXTURE 3D ---> TEXTURE 3D CONVERSION |||||||||||||||||||||||||||||||||
             //final step, save our accumulated 3D texture to the disk.
 
-            renderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, localAssetSceneDataFolder + "/" + filename + ".asset");
+            renderTextureConverter.SaveRenderTexture3DAsTexture3D(combinedSceneVoxel, localAssetSceneDataFolder + "/" + filename + ".asset", generateMips);
 
             Debug.Log(string.Format("Generating {0} took {1} seconds.", filename, Time.realtimeSinceStartup - timeBeforeFunction));
 
